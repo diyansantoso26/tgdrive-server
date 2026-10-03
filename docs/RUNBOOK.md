@@ -124,3 +124,35 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
   besar otomatis gagal + link "Buka jalur langsung (darurat)" di Pengaturan khusus PRO.
 - Kolom baru `upload_sessions.client_key` + `result_file_id` (migrasi otomatis di `db.init_db`).
 - Batas: non-PRO 100 MB/file, PRO 2 GB/file.
+
+## Fitur batch-2: pilih banyak, scrubber, label, explorer, editor teks (2026-10-03)
+
+- **Navbar Explorer** di Drive: tombol ← → ↑ (riwayat per sesi/tab) + breadcrumb pill
+  `🏠 Drive Saya › 📁 Folder`. "Drive Saya" = root Drive (bukan menu terpisah).
+- **Info storage** pindah dari topbar ke strip collapsible di halaman Drive:
+  satu baris ramping, ketuk untuk rincian (Terpakai/Tersisa/File/Folder),
+  status diingat per user; peringatan otomatis ≥80% (kuning) & ≥95% (merah) + ajakan PRO.
+  Teks "Terhubung via: domain" dihapus dari UI (routing tetap jalan di belakang).
+- **Tombol Upload gabungan**: satu tombol ⬆ Upload → dropdown Upload file / Upload folder.
+  **Tombol ＋ Baru**: File teks (.txt) / Markdown (.md) / Folder baru.
+- **Konfirmasi & notifikasi modern**: seluruh `confirm()`/`alert()` native diganti
+  `confirmDlg()` (dialog kustom ikut tema) + `notify(msg, 'ok'|'err'|'info')` (toast).
+- **Pilih banyak**: tahan lama / tombol ☑ Pilih → checkbox, selbar "N dipilih",
+  Pilih semua (tampilan aktif), action bar: 📂 Pindah (dialog pilih folder),
+  ⬇ Unduh (banyak file = satu ZIP), 🗑 Hapus (dengan Urungkan untuk file).
+  Berlaku di Drive (file+folder) dan Foto.
+- **Scrubber timeline Foto**: grup per bulan, header sticky, scrubber vertikal kanan
+  dengan bubble bulan/tahun; scroll biasa menggerakkan knob. Tampil label memakai
+  timeline + scrubber yang sama.
+- **Label foto kustom**: tabel `labels` + `file_labels`; CRUD via `/api/labels`;
+  chip filter (Semua/Favorit/label/＋); dialog buat/ubah (nama+warna+ikon);
+  halaman Kelola (kartu kolase + jumlah); bulk assign; filter `?label_id=`;
+  titik warna di thumbnail (maks 3 + counter). Hapus label tidak hapus foto.
+- **Editor teks**: buat/baca/edit `.txt`/`.md` langsung di aplikasi
+  (tab ✏️ Tulis / 👁 Pratinjau markdown tersanitasi, draf otomatis di localStorage,
+  hitung kata, konfirmasi bila keluar tanpa simpan). File baru via ＋ Baru;
+  file lama ditimpa (konfirmasi, entri Drive tetap).
+- API baru: `POST /api/files/bulk-trash|bulk-restore|bulk-move|bulk-favorite|bulk-label`,
+  `GET /api/files/download-zip?ids=`, CRUD `/api/labels`,
+  `POST /api/files/create-text`, `GET|PUT /api/files/<id>/content`.
+  `GET /api/files` mendukung `label_id=` & `with_labels=1`; `GET /api/labels?covers=1`.
