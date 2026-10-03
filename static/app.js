@@ -24,7 +24,7 @@ const CF_LIMIT=100*1024*1024; // batas Cloudflare per request (hanya via domain)
 if(typeof ON_DIRECT==='undefined'){var ON_DIRECT=/^\d{1,3}(\.\d{1,3}){3}$/.test(location.hostname)}
 // LIM: batas per user dari server (dipakai routing upload)
 let LIM={maxUpload:20*1024*1024,cfLimit:100*1024*1024,resumeThreshold:10*1024*1024,isPro:false,directUrl:'',chunked:true};
-(async()=>{try{const s=await api('/api/storage');const el=document.getElementById('storageInfo');if(el)el.textContent=fmtSize(s.bytes)+' • '+s.count+' file';if(s.max_upload_bytes)MAX_UPLOAD=s.max_upload_bytes}catch(e){}})();
+(async()=>{try{const s=await api('/api/storage');if(s.max_upload_bytes)MAX_UPLOAD=s.max_upload_bytes}catch(e){}})();
 (async()=>{try{const l=await api('/api/upload-limits');
   LIM={maxUpload:l.max_upload_bytes,cfLimit:l.cf_limit_bytes,resumeThreshold:l.resume_threshold_bytes,isPro:!!l.is_pro,directUrl:l.direct_url||'',chunked:l.chunked!==false};
   MAX_UPLOAD=l.max_upload_bytes;
@@ -74,6 +74,148 @@ function askPin(title,msg){return new Promise(res=>{
   m.querySelector('#pinOk').onclick=()=>done(inp.value.trim()||null);
   inp.onkeydown=e=>{if(e.key==='Enter')m.querySelector('#pinOk').click();if(e.key==='Escape')done(null)};
 })}
+
+/* ---------- batch 2026-10-03: komponen modern bersama ---------- */
+/* notifikasi modern: type ok|err|info */
+function notify(msg,type){
+  document.querySelectorAll('.ntoast').forEach(t=>t.remove());
+  const d=document.createElement('div');d.className='ntoast '+(type||'info');
+  const ic=type==='ok'?'✓':type==='err'?'✕':'ℹ';
+  d.innerHTML='<span class="nico">'+ic+'</span><span></span>';
+  d.lastChild.textContent=msg;
+  document.body.appendChild(d);
+  requestAnimationFrame(()=>d.classList.add('show'));
+  setTimeout(()=>{d.classList.remove('show');setTimeout(()=>d.remove(),320)},type==='err'?6000:3500);
+}
+/* dialog konfirmasi modern pengganti confirm() — promise boolean */
+function confirmDlg(o){o=o||{};return new Promise(res=>{
+  const m=modal('<div class="cdlg"><div class="cico">'+esc(o.ico||'❓')+'</div><h3>'+esc(o.title||'Yakin?')+'</h3>'
+    +(o.msg?'<p>'+esc(o.msg)+'</p>':'')
+    +'<div class="row"><button class="btn" id="cdNo">'+esc(o.no||'Batal')+'</button>'
+    +'<button class="btn '+(o.danger?'danger':'primary')+'" id="cdYes">'+esc(o.yes||'Ya')+'</button></div></div>');
+  const done=v=>{m.remove();res(v)};
+  m.querySelector('#cdNo').onclick=()=>done(false);
+  m.querySelector('#cdYes').onclick=()=>done(true);
+  m.querySelector('#cdYes').focus();
+})}
+/* render markdown sederhana + aman (HTML di-escape dulu) */
+function mdRender(src){
+  let h=esc(src);
+  h=h.replace(/```([\s\S]*?)```/g,(m,c)=>'<pre><code>'+c.trim()+'</code></pre>');
+  h=h.replace(/^### (.*)$/gm,'<h4>$1</h4>').replace(/^## (.*)$/gm,'<h3>$1</h3>').replace(/^# (.*)$/gm,'<h2>$1</h2>');
+  h=h.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/(^|\W)\*(.+?)\*/g,'$1<i>$2</i>').replace(/`(.+?)`/g,'<code>$1</code>');
+  h=h.replace(/^&gt; (.*)$/gm,'<blockquote>$1</blockquote>');
+  h=h.replace(/^\- (.*)$/gm,'<li>$1</li>');
+  h=h.replace(/(<li>.*<\/li>\s*)+/g,m=>'<ul>'+m+'</ul>');
+  return h.split(/\n\s*\n/).map(p=>/^<(h\d|ul|pre|blockquote)/.test(p.trim())?p:'<p>'+p.replace(/\n/g,'<br>')+'</p>').join('');
+}
+/* dialog pilih folder tujuan (untuk pindah massal) — promise folderId|null */
+function pickFolder(folders,currentId){
+  return new Promise(res=>{
+    const row=(id,name,indent)=>'<div class="frow'+(String(id)===String(currentId)?' on':'')+'" data-f="'+id+'" style="padding-left:'+(14+indent*18)+'px">📁 '+esc(name)+'</div>';
+    let sel=null;
+    const m=modal('<h3>📂 Pindah ke…</h3><div class="fpick">'
+      +row('root','Drive Saya',0)
+      +folders.map(f=>row(f.id,f.name,0)).join('')
+      +'</div><div class="row"><button class="btn" id="pfNo">Batal</button><button class="btn primary" id="pfYes">Pindahkan</button></div>');
+    m.querySelectorAll('.frow').forEach(r=>r.onclick=()=>{m.querySelectorAll('.frow').forEach(x=>x.classList.remove('on'));r.classList.add('on');sel=r.dataset.f});
+    const done=v=>{m.remove();res(v)};
+    m.querySelector('#pfNo').onclick=()=>done(null);
+    m.querySelector('#pfYes').onclick=()=>done(sel);
+  });
+}
+
+/* ---------- editor teks (.txt / .md): buat, baca, edit ---------- */
+function openEditor(o){
+  o=o||{};
+  const isNew=o.mode!=='edit';
+  const ext=(o.ext||(o.name||'').split('.').pop()||'txt').toLowerCase();
+  const draftKey='tgd_draft_'+(isNew?'new_'+ext+'_'+(o.folder||'root'):'f'+o.fileId);
+  const wrap=document.createElement('div');wrap.className='edwrap';
+  wrap.innerHTML=
+    '<div class="edtop"><button class="btn ghost" id="edBack" title="Kembali">←</button>'
+    +'<input class="edname" id="edName" maxlength="200" value="">'
+    +'<span class="eddraft" id="edDraft"></span>'
+    +'<button class="btn primary" id="edSave">Simpan</button></div>'
+    +'<div class="edtabs"><div class="edseg" id="edTabs"><button data-v="edit" class="on">✏️ Tulis</button><button data-v="prev">👁 Pratinjau</button></div>'
+    +'<span class="edcount" id="edCount"></span></div>'
+    +'<textarea class="edarea" id="edArea" placeholder="Tulis di sini…"></textarea>'
+    +'<div class="edprev" id="edPrev" style="display:none"></div>';
+  document.body.appendChild(wrap);
+  const q=s=>wrap.querySelector(s);
+  const nameInp=q('#edName'),area=q('#edArea'),prev=q('#edPrev'),draftEl=q('#edDraft');
+  let orig='';
+  function updCount(){
+    const t=area.value,w=t.trim()?t.trim().split(/\s+/).length:0;
+    q('#edCount').textContent=w+' kata • '+t.length+' karakter';
+  }
+  function setTab(v){
+    q('#edTabs').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+    const isPrev=v==='prev';
+    area.style.display=isPrev?'none':'block';
+    prev.style.display=isPrev?'block':'none';
+    if(isPrev)prev.innerHTML=ext==='md'?mdRender(area.value):'<p>'+esc(area.value).replace(/\n/g,'<br>')+'</p>';
+  }
+  q('#edTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>setTab(b.dataset.v));
+  let dT=null;
+  area.addEventListener('input',()=>{
+    updCount();clearTimeout(dT);
+    dT=setTimeout(()=>{try{localStorage.setItem(draftKey,area.value);draftEl.textContent='✓ Draf tersimpan'}catch(e){}},800);
+  });
+  function isDirty(){return area.value!==orig||nameInp.value!==nameInp.dataset.orig}
+  async function close(){
+    if(isDirty()&&!await confirmDlg({ico:'⚠️',title:'Buang perubahan?',msg:'Perubahan belum disimpan dan akan hilang.',yes:'Ya, keluar'}))return;
+    wrap.remove();
+  }
+  q('#edBack').onclick=close;
+  document.addEventListener('keydown',function esc2(e){if(e.key==='Escape'&&document.body.contains(wrap)){close();document.removeEventListener('keydown',esc2)}});
+  function fixName(n){
+    n=(n||'').trim()||'tanpa-judul';
+    return /\.(txt|md)$/i.test(n)?n:n+'.'+ext;
+  }
+  q('#edSave').onclick=async()=>{
+    const name=fixName(nameInp.value),content=area.value;
+    const done=msg=>{
+      try{localStorage.removeItem(draftKey)}catch(e){}
+      notify(msg,'ok');wrap.remove();o.onSaved&&o.onSaved();
+    };
+    try{
+      if(isNew){
+        const r=await api('/api/files/create-text',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({name:name,content:content,folder_id:o.folder==='root'?null:o.folder})});
+        done('✓ "'+name+'" tersimpan di Drive');
+      }else{
+        if(!await confirmDlg({ico:'💾',title:'Timpa file?',msg:'"'+name+'" akan ditimpa dengan versi baru ini.',yes:'Ya, simpan'}))return;
+        await api('/api/files/'+o.fileId+'/content',{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({content:content})});
+        // nama berubah? rename sekalian
+        if(name!==o.name)await api('/api/files/'+o.fileId+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+        done('✓ Perubahan "'+name+'" disimpan');
+      }
+    }catch(e){notify('Gagal menyimpan: '+e.message,'err')}
+  };
+  // muat isi
+  (async()=>{
+    if(isNew){
+      nameInp.value='catatan-tanpa-judul.'+ext;nameInp.dataset.orig=nameInp.value;
+      orig='';
+      const d=localStorage.getItem(draftKey);
+      if(d){area.value=d;draftEl.textContent='✓ Draf dipulihkan'}
+      updCount();setTimeout(()=>area.focus(),200);
+    }else{
+      nameInp.value=o.name;nameInp.dataset.orig=o.name;
+      area.placeholder='Memuat…';area.disabled=true;
+      try{
+        const r=await api('/api/files/'+o.fileId+'/content');
+        orig=r.content||'';
+        const d=localStorage.getItem(draftKey);
+        area.value=(d&&d!==orig)?d:orig;
+        if(d&&d!==orig)draftEl.textContent='✓ Draf dipulihkan';
+      }catch(e){notify('Gagal membuka: '+e.message,'err');wrap.remove();return}
+      area.disabled=false;area.placeholder='Tulis di sini…';updCount();
+    }
+  })();
+}
 
 /* ---------- DRIVE ---------- */
 function initDrive(){
@@ -127,6 +269,28 @@ function initDrive(){
     e.preventDefault();e.shiftKey?doRedo():doUndo();
   });
 
+  /* ---------- navbar explorer: riwayat per sesi + breadcrumb pill ---------- */
+  const navHist=['root'];let navIdx=0;
+  function navCur(){return navHist[navIdx]}
+  function navGo(fid){
+    fid=String(fid);
+    if(fid!==navCur()){navHist.length=navIdx+1;navHist.push(fid);navIdx++}
+    S.folder=fid;S.trash=false;exitSelMode();renderCrumbs();load();
+  }
+  function navBack(){
+    if(S.trash){S.trash=false;S.folder='root';renderCrumbs();load();return}
+    if(navIdx>0){navIdx--;S.folder=navCur();exitSelMode();renderCrumbs();load()}
+  }
+  function navFwd(){
+    if(navIdx<navHist.length-1){navIdx++;S.folder=navCur();S.trash=false;exitSelMode();renderCrumbs();load()}
+  }
+  function navUp(){
+    if(S.trash){S.trash=false;S.folder='root';renderCrumbs();load();return}
+    const f=S.folders.find(x=>String(x.id)===String(S.folder));
+    navGo(f&&f.parent_id?String(f.parent_id):'root');
+  }
+  function navReset(){navHist.length=0;navHist.push('root');navIdx=0}
+
   async function openFolder(fid){
     fid=+fid;
     const f=S.folders.find(x=>+x.id===fid);
@@ -134,9 +298,9 @@ function initDrive(){
       const pin=await askPin('🔒 Folder terkunci','Masukkan PIN untuk membuka "'+f.name+'"');
       if(!pin)return;
       try{await api('/api/lock/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder_id:fid,pin:pin})});unlocked.add(fid)}
-      catch(e){alert(e.message);return}
+      catch(e){notify(e.message,'err');return}
     }
-    S.folder=String(fid);S.trash=false;load();
+    navGo(fid);
   }
 
   async function loadFolders(){try{S.folders=(await api('/api/folders')).folders||[]}catch(e){S.folders=[]}renderCrumbs()}
@@ -158,12 +322,12 @@ function initDrive(){
     if(eb)eb.onclick=emptyTrash;
   }
   async function emptyTrash(){
-    if(!confirm('Kosongkan tong sampah?\nSemua file dihapus PERMANEN — termasuk dari channel Telegram — dan tidak bisa dikembalikan.'))return;
+    if(!await confirmDlg({ico:'🗑',title:'Kosongkan tong sampah?',msg:'Semua file dihapus PERMANEN — termasuk dari channel Telegram — dan tidak bisa dikembalikan.',yes:'Ya, kosongkan',danger:true}))return;
     try{
       const r=await api('/api/trash/empty',{method:'POST'});
-      alert('Tong sampah dikosongkan. '+r.deleted+' file dihapus permanen.'+(r.failed?' ('+r.failed+' gagal)':''));
+      notify('Tong sampah dikosongkan. '+r.deleted+' file dihapus permanen.'+(r.failed?' ('+r.failed+' gagal)':''),'ok');
       load();
-    }catch(e){alert('Gagal: '+e.message)}
+    }catch(e){notify('Gagal: '+e.message,'err')}
   }
   function folderChain(fid){
     const byId={};S.folders.forEach(f=>byId[f.id]=f);
@@ -172,14 +336,20 @@ function initDrive(){
     return chain;
   }
   function renderCrumbs(){
-    let h='<button class="crumb'+(S.folder==='root'&&!S.trash?' on':'')+'" data-f="root">Drive Saya</button>';
-    if(S.folder!=='root'&&!S.trash){
-      h+=folderChain(S.folder).map(f=>'<span class="crumb-sep">›</span><button class="crumb'+(String(S.folder)===String(f.id)?' on':'')+'" data-f="'+f.id+'">'+esc(f.name)+'</button>').join('');
+    const bB=document.getElementById('navBack'),bF=document.getElementById('navFwd'),bU=document.getElementById('navUp');
+    if(bB)bB.disabled=S.trash?false:navIdx===0;
+    if(bF)bF.disabled=navIdx>=navHist.length-1;
+    if(bU)bU.disabled=S.trash?false:S.folder==='root';
+    let h='<button class="crumb'+(S.folder==='root'&&!S.trash?' on':'')+'" data-f="root">🏠 Drive Saya</button>';
+    if(!S.trash&&S.folder!=='root'){
+      h+=folderChain(S.folder).map(f=>'<span class="csep">›</span><button class="crumb'+(String(S.folder)===String(f.id)?' on':'')+'" data-f="'+f.id+'">📁 '+esc(f.name)+'</button>').join('');
     }
-    h+='<button class="crumb'+(S.trash?' on':'')+'" data-f="__trash">Tong Sampah</button>';
+    if(S.trash)h+='<span class="csep">›</span><button class="crumb on" data-f="__trash">🗑 Tong Sampah</button>';
     crumbs.innerHTML=h;
-    crumbs.querySelectorAll('button').forEach(b=>b.onclick=()=>{const v=b.dataset.f;S.trash=(v==='__trash');
-      if(v==='__trash'||v==='root'){S.folder='root';load()}else openFolder(v)})}
+    crumbs.querySelectorAll('button').forEach(b=>b.onclick=()=>{const v=b.dataset.f;
+      if(v==='__trash'){S.trash=true;exitSelMode();renderCrumbs();load()}
+      else if(v==='root')navGo('root');
+      else openFolder(v)})}
 
   async function load(){
     const p=new URLSearchParams({folder:S.folder,sort:S.sort,order:S.order,trashed:S.trash?'1':'0',q:S.q});
@@ -193,41 +363,59 @@ function initDrive(){
         const pin=await askPin('🔒 Folder terkunci','Masukkan PIN untuk membuka "'+(f?f.name:'folder ini')+'"');
         if(pin){
           try{await api('/api/lock/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder_id:+S.folder,pin:pin})});
-            unlocked.add(+S.folder);return load()}catch(e2){alert(e2.message)}
+            unlocked.add(+S.folder);return load()}catch(e2){notify(e2.message,'err')}
         }
         S.folder='root';renderCrumbs();return load();
       }
     }
     if(lockNote){lockNote.classList.toggle('hidden',!lockedHidden);if(lockedHidden)lockNote.textContent='🔒 '+lockedHidden+' item di folder terkunci disembunyikan.'}
     renderTrashBar(files);
-    grid.className='grid'+(S.view==='list'?' list':'');
+    grid.className='grid'+(S.view==='list'?' list':'')+(sel.mode?' selecting':'');
     let html='';
     if(!S.trash&&!S.q){
       const subs=S.folders.filter(f=>S.folder==='root'?!f.parent_id:String(f.parent_id)===String(S.folder));
-      html+=subs.map(f=>'<div class="fitem folderitem" data-fid="'+f.id+'"><div class="thumb">📁'+(f.is_locked?'<span class="lk">🔒</span>':'')+'</div><div class="meta"><div class="nm">'+esc(f.name)+'</div><div class="sz">Folder</div></div><div class="acts"><button class="kebab" title="Menu">⋮</button></div></div>').join('');
+      html+=subs.map(f=>'<div class="fitem folderitem" data-fid="'+f.id+'"><div class="chk">✓</div><div class="thumb">📁'+(f.is_locked?'<span class="lk">🔒</span>':'')+'</div><div class="meta"><div class="nm">'+esc(f.name)+'</div><div class="sz">Folder</div></div><div class="acts"><button class="kebab" title="Menu">⋮</button></div></div>').join('');
     }
     html+=files.map((f,i)=>{
       const thumb=f.kind==='photo'||f.kind==='video'
         ?'<img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.parentNode.textContent='+(f.kind==='video'?'🎬':'🖼')+'">'
-        :'<div>'+(f.kind==='audio'?'🎵':'📄')+'</div>';
-      return '<div class="fitem" data-i="'+i+'"><div class="thumb">'+thumb+'</div><div class="meta"><div class="nm" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' • '+fmtDate(f.uploaded_at)+(S.trash?'<br><span class="trashcount">'+trashCountdown(f.trashed_at)+'</span>':'')+'</div></div>'+
+        :'<div>'+(f.kind==='audio'?'🎵':/\.md$/i.test(f.name)?'📝':'📄')+'</div>';
+      return '<div class="fitem" data-i="'+i+'"><div class="chk">✓</div><div class="thumb">'+thumb+'</div><div class="meta"><div class="nm" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' • '+fmtDate(f.uploaded_at)+(S.trash?'<br><span class="trashcount">'+trashCountdown(f.trashed_at)+'</span>':'')+'</div></div>'+
         '<div class="acts"><button class="kebab" title="Menu">⋮</button></div></div>';
     }).join('');
     grid.innerHTML=html;empty.classList.toggle('hidden',html!=='');
-    const items=files;
+    const items=files;selItems=files;
     grid.querySelectorAll('.fitem').forEach(el=>{
       const fi=el.dataset.fid;
       const kb=el.querySelector('.kebab');
+      if(!sel.mode){
+        // tahan lama = masuk mode pilih
+        let lpT=null;
+        const swallow=()=>{const h=e=>{e.stopPropagation();e.preventDefault();window.removeEventListener('click',h,true)};
+          window.addEventListener('click',h,true);setTimeout(()=>window.removeEventListener('click',h,true),700)};
+        el.addEventListener('pointerdown',()=>{lpT=setTimeout(()=>{
+          enterSelMode();
+          if(fi!==undefined&&fi!=='')toggleSelFolder(fi);else toggleSelFile(items[+el.dataset.i].id);
+          swallow();
+        },450)});
+        ['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,()=>clearTimeout(lpT)));
+      }
       if(fi!==undefined&&fi!==''){
+        if(sel.mode){el.onclick=()=>toggleSelFolder(fi);return}
         const open=()=>openFolder(fi);
         el.querySelector('.thumb').onclick=open;
         el.querySelector('.meta').onclick=open;
         if(kb){kb._folder={fid:fi,el:el};kb.onclick=e=>{e.stopPropagation();openCtxMenu(kb)}}
         return}
       const it=items[+el.dataset.i];
-      el.querySelector('.thumb').onclick=()=>{if(it.kind==='photo'||it.kind==='video')openLightbox(items.filter(x=>x.kind==='photo'||x.kind==='video'),items.filter(x=>x.kind==='photo'||x.kind==='video').indexOf(it))};
+      if(sel.mode){el.onclick=()=>toggleSelFile(it.id);return}
+      el.querySelector('.thumb').onclick=()=>{
+        if(it.kind==='photo'||it.kind==='video')openLightbox(items.filter(x=>x.kind==='photo'||x.kind==='video'),items.filter(x=>x.kind==='photo'||x.kind==='video').indexOf(it));
+        else if(/\.(txt|md)$/i.test(it.name))openEditor({mode:'edit',fileId:it.id,name:it.name,onSaved:()=>load()});
+      };
       if(kb){kb._file=it;kb.onclick=e=>{e.stopPropagation();openCtxMenu(kb)}}
     });
+    syncSelUI();
   }
   /* menu konteks ⋮ — satu simbol, diklik baru muncul pilihan */
   function hideCtxMenu(){const m=document.getElementById('ctxmenu');if(m)m.classList.add('hidden')}
@@ -247,6 +435,7 @@ function initDrive(){
     }else if(kb._file){
       const it=kb._file;
       defs=[['⬇ Unduh',()=>act('dl',it)],['ⓘ Properties',()=>act('props',it)]];
+      if(/\.(txt|md)$/i.test(it.name))defs.push(['✏️ Edit',()=>act('edit',it)]);
       if(!S.trash)defs.push(['✏️ Ganti nama',()=>act('rename',it)],['🔗 Bagikan',()=>act('share',it)],[(it.favorite?'★ Hapus dari favorit':'☆ Favorit'),()=>act('fav',it)],['🗑 Hapus',()=>act('trash',it)]);
       else defs.push(['↩ Kembalikan',()=>act('restore',it)],['✖ Hapus permanen',()=>act('del',it)]);
     }
@@ -263,7 +452,8 @@ function initDrive(){
   async function act(a,it){
     try{
       if(a==='dl'){location.href=await dlHref(it)}
-      else if(a==='trash'&&confirm('Pindahkan "'+it.name+'" ke tong sampah?')){
+      else if(a==='edit'){openEditor({mode:'edit',fileId:it.id,name:it.name,onSaved:()=>load()})}
+      else if(a==='trash'&&(await confirmDlg({ico:'🗑',title:'Pindahkan ke tong sampah?',msg:'"'+it.name+'"',yes:'Ya, pindahkan'}))){
         await api('/api/files/'+it.id+'/trash',{method:'POST'});load();
         pushUndo('pindahkan "'+it.name+'" ke tong sampah',
           ()=>api('/api/files/'+it.id+'/restore',{method:'POST'}),
@@ -277,7 +467,7 @@ function initDrive(){
           ()=>api('/api/files/'+it.id+'/restore',{method:'POST'}));
         toast('"'+it.name+'" dikembalikan.','Urungkan',doUndo);
       }
-      else if(a==='del'&&confirm('HAPUS PERMANEN "'+it.name+'"?\nFile juga dihapus dari channel Telegram dan tidak bisa dikembalikan.')){await api('/api/files/'+it.id,{method:'DELETE'});load()}
+      else if(a==='del'&&(await confirmDlg({ico:'✖',title:'Hapus permanen?',msg:'"'+it.name+'" juga dihapus dari channel Telegram dan tidak bisa dikembalikan.',yes:'Ya, hapus',danger:true}))){await api('/api/files/'+it.id,{method:'DELETE'});load();notify('File dihapus permanen.','ok')}
       else if(a==='fav'){await api('/api/files/'+it.id+'/favorite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fav:!it.favorite})});load()}
       else if(a==='props')showFileProps(it);
       else if(a==='rename'){const n=await askName('Ganti nama file',it.name);
@@ -294,7 +484,78 @@ function initDrive(){
         m.querySelector('#shGo').onclick=async()=>{const r=await api('/api/share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:it.id,hours:+m.querySelector('#shHours').value||24})});
           m.querySelector('#shOut').innerHTML='<div class="sharelink">'+esc(r.url)+'</div><div style="font-size:.8rem;color:var(--muted)">Berlaku sampai '+esc(r.expires_at)+'</div>'};
       }
-    }catch(e){alert(e.message)}
+    }catch(e){notify(e.message,'err')}
+  }
+
+  /* ---------- mode pilih banyak + aksi massal ---------- */
+  const sel={mode:false,files:new Set(),folders:new Set()};
+  let selItems=[];
+  function selCount(){return sel.files.size+sel.folders.size}
+  function enterSelMode(){
+    if(S.trash){notify('Mode pilih tidak tersedia di Tong Sampah.','info');return}
+    sel.mode=true;sel.files.clear();sel.folders.clear();
+    syncSelUI();load();
+  }
+  function exitSelMode(){
+    if(!sel.mode)return;
+    sel.mode=false;sel.files.clear();sel.folders.clear();
+    syncSelUI();load();
+  }
+  function syncSelUI(){
+    const bar=document.getElementById('selBar'),ab=document.getElementById('selActionBar');
+    const n=selCount();
+    if(bar){bar.classList.toggle('hidden',!sel.mode);
+      const c=document.getElementById('selCount');if(c)c.textContent=n+' dipilih'}
+    if(ab)ab.classList.toggle('on',sel.mode&&n>0);
+    const sm=document.getElementById('selModeBtn');
+    if(sm)sm.textContent=sel.mode?'✕ Batal':'☑ Pilih';
+    grid.classList.toggle('selecting',sel.mode);
+    grid.querySelectorAll('.fitem').forEach(el=>{
+      const fid=el.dataset.fid;
+      let on=false;
+      if(fid!==undefined&&fid!=='')on=sel.folders.has(String(fid));
+      else{const it=selItems[+el.dataset.i];on=it&&sel.files.has(it.id)}
+      el.classList.toggle('sel',!!on);
+    });
+  }
+  function toggleSelFile(id){sel.files.has(id)?sel.files.delete(id):sel.files.add(id);syncSelUI()}
+  function toggleSelFolder(fid){fid=String(fid);sel.folders.has(fid)?sel.folders.delete(fid):sel.folders.add(fid);syncSelUI()}
+  function selVisibleFolders(){
+    return S.folders.filter(f=>S.folder==='root'?!f.parent_id:String(f.parent_id)===String(S.folder));
+  }
+  async function bulkDelete(){
+    const n=selCount();if(!n)return;
+    if(!await confirmDlg({ico:'🗑',title:'Hapus '+n+' item?',msg:'File dipindah ke Tong Sampah. Folder dihapus (isinya ikut ke Tong Sampah).',yes:'Ya, hapus',danger:true}))return;
+    try{
+      const fileIds=[...sel.files];
+      await api('/api/files/bulk-trash',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({file_ids:fileIds,folder_ids:[...sel.folders]})});
+      exitSelMode();await loadFolders();load();
+      if(fileIds.length){
+        pushUndo('hapus '+n+' item',
+          ()=>api('/api/files/bulk-restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:fileIds})}),
+          ()=>api('/api/files/bulk-trash',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_ids:fileIds,folder_ids:[]})}));
+        toast('Dipindah ke tong sampah ('+n+' item).','Urungkan',doUndo);
+      }else notify('Folder dihapus.','ok');
+    }catch(e){notify('Gagal: '+e.message,'err')}
+  }
+  async function bulkMove(){
+    const n=selCount();if(!n)return;
+    const dest=await pickFolder(S.folders.filter(f=>!sel.folders.has(String(f.id))),S.folder);
+    if(dest===null||dest===undefined)return;
+    try{
+      const r=await api('/api/files/bulk-move',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({file_ids:[...sel.files],folder_ids:[...sel.folders],folder_id:dest})});
+      exitSelMode();await loadFolders();load();
+      notify('Dipindah: '+r.files+' file, '+r.folders+' folder.'+(r.skipped?' ('+r.skipped+' dilewati)':''),'ok');
+    }catch(e){notify('Gagal: '+e.message,'err')}
+  }
+  function bulkDownload(){
+    const ids=[...sel.files];
+    if(!ids.length){notify('Pilih file dulu — folder tidak bisa diunduh massal.','info');return}
+    notify(ids.length>1?'Menyiapkan ZIP berisi '+ids.length+' file…':'Mengunduh 1 file…','info');
+    location.href='/api/files/download-zip?ids='+ids.join(',');
+    exitSelMode();
   }
 
   /* ---------- properties ala file explorer ---------- */
@@ -353,13 +614,13 @@ function initDrive(){
         await loadFolders();load();
       }
       else if(a==='del'){
-        if(confirm('Hapus folder "'+name+'"?\nFile di dalamnya dipindah ke tong sampah.')){
+        if(await confirmDlg({ico:'🗑',title:'Hapus folder?',msg:'"'+name+'" — file di dalamnya dipindah ke tong sampah.',yes:'Ya, hapus',danger:true})){
           const r=await api('/api/folders/'+fid,{method:'DELETE'});
           await loadFolders();S.folder='root';load();
-          if(r.trashed_files)alert('Folder dihapus. '+r.trashed_files+' file dipindah ke tong sampah.');
+          if(r.trashed_files)notify('Folder dihapus. '+r.trashed_files+' file dipindah ke tong sampah.','ok');
         }
       }
-    }catch(e){alert(e.message)}
+    }catch(e){notify(e.message,'err')}
   }
 
   /* pill aktivitas live di menubar — muncul hanya saat ada upload */
@@ -467,7 +728,7 @@ function initDrive(){
   async function uploadFiles(list){
     const jobs=[...list].map(f=>({file:f,folderId:S.folder!=='root'?+S.folder:null}));
     await uploadJobs(jobs);
-    await loadFolders();load();
+    await loadFolders();load();loadStorage();
   }
 
   /* antrean upload: cek duplikat dulu, lalu kirim maks 3 paralel */
@@ -720,7 +981,53 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   document.getElementById('sort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;load()};
   let qt;document.getElementById('q').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();load()},350)};
   document.getElementById('viewToggle').onclick=e=>{S.view=S.view==='grid'?'list':'grid';e.target.textContent=S.view==='grid'?'▦':'☰';load()};
-  document.getElementById('newFolderBtn').onclick=()=>{const m=modal('<h3>Folder baru</h3><input id="nfName" placeholder="Nama folder"><div class="row"><button class="btn" onclick="this.closest(\'.modal\').remove()">Batal</button><button class="btn primary" id="nfGo">Buat</button></div>');
+  /* navbar explorer */
+  document.getElementById('navBack').onclick=navBack;
+  document.getElementById('navFwd').onclick=navFwd;
+  document.getElementById('navUp').onclick=navUp;
+  /* mode pilih banyak */
+  document.getElementById('selModeBtn').onclick=()=>sel.mode?exitSelMode():enterSelMode();
+  document.getElementById('selCancelBtn').onclick=exitSelMode;
+  document.getElementById('selAllBtn').onclick=()=>{
+    sel.files=new Set(selItems.map(f=>f.id));
+    sel.folders=new Set(selVisibleFolders().map(f=>String(f.id)));
+    syncSelUI();notify(selCount()+' item dipilih.','info');
+  };
+  document.getElementById('bulkMoveBtn').onclick=bulkMove;
+  document.getElementById('bulkDlBtn').onclick=bulkDownload;
+  document.getElementById('bulkDelBtn').onclick=bulkDelete;
+  /* storage strip collapsible */
+  let ssOpen=localStorage.getItem('tgd_ss')==='1';
+  function fmtQuota(v){return v>=1024?(v/1024).toFixed(1).replace('.',',')+' GB':Math.round(v)+' MB'}
+  async function loadStorage(){
+    try{
+      const r=await api('/api/storage');
+      const pct=r.quota_mb?Math.min(100,r.used_mb/r.quota_mb*100):0;
+      document.getElementById('stText').textContent=fmtQuota(r.used_mb)+' dari '+fmtQuota(r.quota_mb);
+      const bar=document.getElementById('stBar');bar.style.width=pct+'%';
+      bar.style.background=pct>=95?'linear-gradient(90deg,#f87171,#ef4444)':pct>=80?'linear-gradient(90deg,#fbbf24,#f59e0b)':'linear-gradient(90deg,#34d399,#4f8cff)';
+      document.getElementById('stUsedB').textContent=fmtQuota(r.used_mb);
+      document.getElementById('stFreeB').textContent=fmtQuota(Math.max(0,r.quota_mb-r.used_mb));
+      document.getElementById('stFilesB').textContent=r.files||0;
+      document.getElementById('stFoldersB').textContent=S.folders.length;
+      const w=document.getElementById('ssWarn');
+      w.classList.toggle('hidden',pct<80);w.classList.toggle('crit',pct>=95);
+      if(pct>=95)w.innerHTML='🚨 <b>Penyimpanan hampir habis!</b> Upload akan gagal bila penuh — <a href="/upgrade">tingkatkan ke PRO</a>.';
+      else if(pct>=80)w.innerHTML='⚠️ Penyimpanan hampir penuh — <a href="/upgrade">tingkatkan ke PRO</a> untuk kuota lebih besar.';
+      if(pct>=80&&!ssOpen){ssOpen=true;applySs()}
+    }catch(e){document.getElementById('stText').textContent='Gagal memuat info storage'}
+  }
+  function applySs(){
+    document.getElementById('sstrip').classList.toggle('open',ssOpen);
+    localStorage.setItem('tgd_ss',ssOpen?'1':'0');
+  }
+  document.getElementById('ssHead').onclick=()=>{ssOpen=!ssOpen;applySs()};
+  applySs();
+  /* ＋Baru: file teks / markdown / folder */
+  const hideDrops=()=>document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));
+  document.getElementById('newTxt').onclick=()=>{hideDrops();openEditor({mode:'new',ext:'txt',folder:S.folder})};
+  document.getElementById('newMd').onclick=()=>{hideDrops();openEditor({mode:'new',ext:'md',folder:S.folder})};
+  document.getElementById('newFolderBtn').onclick=()=>{hideDrops();const m=modal('<h3>Folder baru</h3><input id="nfName" placeholder="Nama folder"><div class="row"><button class="btn" onclick="this.closest(\'.modal\').remove()">Batal</button><button class="btn primary" id="nfGo">Buat</button></div>');
     m.querySelector('#nfGo').onclick=async()=>{const n=m.querySelector('#nfName').value.trim();if(!n)return;
       const r=await api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:S.folder==='root'?null:S.folder})});
       m.remove();await loadFolders();load();
@@ -737,7 +1044,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   document.getElementById('trashBtn').onclick=()=>{S.trash=true;S.folder='root';renderCrumbs();load()};
 
   document.addEventListener('click',e=>{if(!e.target.closest('#ctxmenu'))hideCtxMenu()});
-  loadFolders().then(load);
+  loadFolders().then(()=>{load();loadStorage()});
   checkPendingUploads(); // tampilkan upload chunked yang belum selesai (resume)
 }
 
@@ -770,11 +1077,11 @@ function initSettings(){
       if(act==='on'){await api('/api/accounts/'+id+'/activate',{method:'POST'});load()}
       else if(act==='edit'){const a=cache.find(x=>x.id===id);if(a)setEditMode(a)}
       else if(act==='del'){
-        if(!confirm('Hapus akun "'+btn.dataset.n+'"?\n'+btn.dataset.c+' file milik akun ini ikut dihapus dari daftar dan Telegram.'))return;
+        if(!await confirmDlg({ico:'👤',title:'Hapus akun Telegram?',msg:'"'+btn.dataset.n+'" — '+btn.dataset.c+' file milik akun ini ikut dihapus dari daftar dan Telegram.',yes:'Ya, hapus',danger:true}))return;
         const r=await api('/api/accounts/'+id,{method:'DELETE'});
-        alert('Akun dihapus ('+r.deleted_files+' file).');load();
+        notify('Akun dihapus ('+r.deleted_files+' file).','ok');load();
       }
-    }catch(e){alert(e.message)}
+    }catch(e){notify(e.message,'err')}
   }
   document.getElementById('accTest').onclick=async()=>{
     if(editingId&&!val('accToken')){say('Isi token dulu untuk mengetes koneksi.',false);return}
@@ -871,7 +1178,7 @@ function initSettings(){
         await api('/api/folders/'+fid+'/lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})});
       }
       loadLock();
-    }catch(e){alert(e.message)}
+    }catch(e){notify(e.message,'err')}
   }
   document.getElementById('pinSave').onclick=async()=>{
     const a=document.getElementById('pinNew').value.trim(),b=document.getElementById('pinNew2').value.trim();
@@ -933,39 +1240,242 @@ function initActivity(){
 
 /* ---------- PHOTOS ---------- */
 function initPhotos(){
-  const S={sort:'taken',order:'desc',fav:false,view:'grid'};
+  const S={sort:'taken',order:'desc',fav:false,view:'grid',labelId:null,labels:[],files:[]};
   const tl=document.getElementById('timeline'),empty=document.getElementById('emptyState');
+  const wrap=document.getElementById('tlWrap'),scrub=document.getElementById('scrub'),
+        knob=document.getElementById('scrubKnob'),bub=document.getElementById('scrubBub');
   const MONTHS=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
   const mlabel=ym=>{const[y,m]=ym.split('-');return MONTHS[+m-1]+' '+y};
   const dlabel=f=>{const d=(f.taken_at||f.uploaded_at||'').slice(0,10);return d?fmtDay(d+'T00:00:00'):''};
+  const LBL_COLORS=['#f87171','#fb923c','#fbbf24','#34d399','#4f8cff','#a78bfa','#f472b6','#94a3b8'];
+
+  /* ---------- mode pilih ---------- */
+  const sel={mode:false,ids:new Set()};
+  function enterPSelMode(){
+    sel.mode=true;sel.ids.clear();
+    tl.querySelectorAll('.tl-grid,.prow').forEach(g=>g.classList.add('selecting'));
+    syncPSelUI();
+  }
+  function exitPSelMode(){
+    if(!sel.mode)return;
+    sel.mode=false;sel.ids.clear();
+    tl.querySelectorAll('.selecting').forEach(g=>g.classList.remove('selecting'));
+    tl.querySelectorAll('.fitem.sel,.prow.sel').forEach(x=>x.classList.remove('sel'));
+    syncPSelUI();
+  }
+  function syncPSelUI(){
+    const bar=document.getElementById('selBar'),ab=document.getElementById('pselActionBar');
+    const n=sel.ids.size;
+    if(bar){bar.classList.toggle('hidden',!sel.mode);
+      const c=document.getElementById('pselCount');if(c)c.textContent=n+' dipilih'}
+    if(ab)ab.classList.toggle('on',sel.mode&&n>0);
+    const sm=document.getElementById('pselModeBtn');
+    if(sm)sm.textContent=sel.mode?'✕ Batal':'☑ Pilih';
+    tl.querySelectorAll('[data-gi]').forEach(el=>{
+      const f=S.files[+el.dataset.gi];
+      el.classList.toggle('sel',!!(f&&sel.ids.has(f.id)));
+    });
+  }
+  function togglePSel(gi){
+    const f=S.files[gi];if(!f)return;
+    sel.ids.has(f.id)?sel.ids.delete(f.id):sel.ids.add(f.id);syncPSelUI();
+  }
+
+  /* ---------- label ---------- */
+  async function loadLabels(){
+    try{S.labels=(await api('/api/labels')).labels||[]}catch(e){S.labels=[]}
+    renderChips();
+  }
+  function renderChips(){
+    const c=document.getElementById('lchips');if(!c)return;
+    let h='<button class="lchip'+(!S.fav&&!S.labelId?' on':'')+'" data-l="">Semua</button>'
+      +'<button class="lchip'+(S.fav?' on':'')+'" data-l="__fav">★ Favorit</button>';
+    h+=S.labels.map(l=>'<button class="lchip'+(String(S.labelId)===String(l.id)?' on':'')+'" data-l="'+l.id+'"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.icon)+' '+esc(l.name)+'</button>').join('');
+    h+='<button class="lchip add" data-l="__add">＋ Label</button>';
+    c.innerHTML=h;
+    c.querySelectorAll('.lchip').forEach(b=>b.onclick=()=>{
+      const v=b.dataset.l;
+      if(v==='__add'){labelDialog();return}
+      S.fav=(v==='__fav');S.labelId=(v&&v!=='__fav')?v:null;
+      exitPSelMode();renderChips();load();
+    });
+  }
+  function labelDialog(ex){
+    ex=ex||{};
+    const m=modal('<h3>'+(ex.id?'✏️ Ubah label':'🏷 Label baru')+'</h3>'
+      +'<input id="lbName" maxlength="30" placeholder="Nama label" value="'+esc(ex.name||'')+'">'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="lbColors">'
+      +LBL_COLORS.map(c2=>'<button data-c="'+c2+'" style="width:32px;height:32px;border-radius:50%;background:'+c2+';border:3px solid '+((ex.color||'#4f8cff')===c2?'#fff':'transparent')+';cursor:pointer" aria-label="'+c2+'"></button>').join('')+'</div>'
+      +'<input id="lbIcon" maxlength="8" placeholder="Ikon emoji (opsional)" value="'+esc(ex.icon||'')+'" style="width:160px">'
+      +'<div class="row"><button class="btn" id="lbCancel">Batal</button>'
+      +(ex.id?'<button class="btn danger" id="lbDel">Hapus</button>':'')
+      +'<button class="btn primary" id="lbSave">Simpan</button></div>');
+    let color=ex.color||'#4f8cff';
+    m.querySelectorAll('#lbColors button').forEach(b=>b.onclick=()=>{color=b.dataset.c;
+      m.querySelectorAll('#lbColors button').forEach(x=>x.style.borderColor=x===b?'#fff':'transparent')});
+    m.querySelector('#lbCancel').onclick=()=>m.remove();
+    const del=m.querySelector('#lbDel');
+    if(del)del.onclick=async()=>{
+      if(!await confirmDlg({ico:'🏷',title:'Hapus label?',msg:'"'+ex.name+'" dihapus. Foto-fotonya TIDAK ikut terhapus.',yes:'Ya, hapus',danger:true}))return;
+      try{await api('/api/labels/'+ex.id,{method:'DELETE'});m.remove();await loadLabels();load();notify('Label dihapus.','ok')}
+      catch(e){notify('Gagal: '+e.message,'err')}
+    };
+    m.querySelector('#lbSave').onclick=async()=>{
+      const name=m.querySelector('#lbName').value.trim();
+      if(!name){notify('Nama label wajib diisi.','err');return}
+      try{
+        if(ex.id)await api('/api/labels/'+ex.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,color:color,icon:m.querySelector('#lbIcon').value.trim()})});
+        else await api('/api/labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,color:color,icon:m.querySelector('#lbIcon').value.trim()})});
+        m.remove();await loadLabels();notify('Label tersimpan.','ok');
+      }catch(e){notify('Gagal: '+e.message,'err')}
+    };
+    setTimeout(()=>m.querySelector('#lbName').focus(),100);
+  }
+  async function manageLabels(){
+    let labels=[];
+    try{labels=(await api('/api/labels?covers=1')).labels||[]}catch(e){}
+    const m=modal('<h3>🏷 Kelola Label</h3>'
+      +(labels.length?'<div class="labgrid">'
+        +labels.map(l=>'<div class="labcard" data-l="'+l.id+'"><div class="collage">'
+          +(l.covers||[]).map(id=>'<img src="/file/'+id+'/thumb" loading="lazy" onerror="this.remove()">').join('')
+          +'</div><div class="lbody"><div class="lname"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.icon)+' '+esc(l.name)+'</div><div class="lcount">'+l.file_count+' foto</div></div></div>').join('')
+        +'</div>'
+        :'<p class="muted" style="font-size:.88rem">Belum ada label. Buat label pertamamu!</p>')
+      +'<div class="row" style="margin-top:16px"><button class="btn primary" id="mlAdd">＋ Label baru</button><button class="btn" id="mlClose">Tutup</button></div>');
+    m.querySelector('#mlClose').onclick=()=>m.remove();
+    m.querySelector('#mlAdd').onclick=()=>{m.remove();labelDialog()};
+    m.querySelectorAll('.labcard').forEach(c=>c.onclick=()=>{
+      const ex=labels.find(x=>String(x.id)===c.dataset.l);
+      m.remove();labelDialog(ex);
+    });
+  }
+  function pickLabelsForBulk(){
+    return new Promise(res=>{
+      if(!S.labels.length){notify('Buat label dulu lewat ＋ Label.','info');res(null);return}
+      const picked=new Set();
+      const m=modal('<h3>🏷 Tambah label</h3><p class="muted" style="font-size:.85rem;margin-bottom:4px">Pilih label untuk '+sel.ids.size+' foto:</p><div class="labpick">'
+        +S.labels.map(l=>'<button class="lchip" data-l="'+l.id+'"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.name)+'</button>').join('')
+        +'</div><div class="row"><button class="btn" id="plNo">Batal</button><button class="btn primary" id="plYes">Terapkan</button></div>');
+      m.querySelectorAll('.lchip').forEach(b=>b.onclick=()=>{const id=b.dataset.l;
+        picked.has(id)?picked.delete(id):picked.add(id);b.classList.toggle('on',picked.has(id))});
+      m.querySelector('#plNo').onclick=()=>{m.remove();res(null)};
+      m.querySelector('#plYes').onclick=()=>{m.remove();res([...picked])};
+    });
+  }
+
+  /* ---------- scrubber timeline ---------- */
+  let grpEls=[];
+  function refreshScrub(){
+    grpEls=[...tl.querySelectorAll('.tl-group')].map(g=>({el:g,label:g.dataset.ml}));
+    scrub.classList.toggle('hidden',grpEls.length<2);
+  }
+  function knobTo(ratio){knob.style.top='calc('+(Math.max(0,Math.min(1,ratio))*100)+'% - 6px)'}
+  let dragging=false;
+  function scrubMove(clientY){
+    const r=scrub.getBoundingClientRect();
+    const ratio=Math.max(0,Math.min(1,(clientY-r.top)/r.height));
+    const idx=Math.min(grpEls.length-1,Math.floor(ratio*grpEls.length));
+    const g=grpEls[idx];if(!g)return;
+    bub.textContent=g.label;bub.style.top=(ratio*100)+'%';
+    knobTo(ratio);
+    g.el.scrollIntoView({block:'start'});
+  }
+  scrub.addEventListener('pointerdown',e=>{if(!grpEls.length)return;dragging=true;scrub.classList.add('drag');try{scrub.setPointerCapture(e.pointerId)}catch(x){}scrubMove(e.clientY);e.preventDefault()});
+  scrub.addEventListener('pointermove',e=>{if(dragging)scrubMove(e.clientY)});
+  ['pointerup','pointercancel'].forEach(ev=>scrub.addEventListener(ev,()=>{dragging=false;scrub.classList.remove('drag')}));
+  window.addEventListener('scroll',()=>{
+    if(!grpEls.length||dragging)return;
+    const y=window.scrollY+140;let idx=0;
+    grpEls.forEach((g,i)=>{if(g.el.offsetTop<=y)idx=i});
+    knobTo(grpEls.length>1?idx/(grpEls.length-1):0);
+  },{passive:true});
+
+  /* ---------- render ---------- */
+  function dotsFor(f){
+    const labs=f.labels||[];
+    if(!labs.length)return '';
+    return '<div class="ldots">'+labs.slice(0,3).map(l=>'<i style="background:'+esc(l.color)+'" title="'+esc(l.name)+'"></i>').join('')
+      +(labs.length>3?'<span class="more">+'+(labs.length-3)+'</span>':'')+'</div>';
+  }
   function thumb(f,gi){
     const fb=f.kind==='video'?'🎬':'🖼';
-    return '<div class="fitem" data-gi="'+gi+'"><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+(f.kind==='video'?'<div class="vbadge">▶</div>':'')+'</div>';
+    return '<div class="fitem" data-gi="'+gi+'"><div class="chk">✓</div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge">▶</div>':'')+'</div>';
   }
   async function load(){
-    const p=new URLSearchParams({folder:'all',sort:S.sort,order:S.order,kinds:'photo,video'});
+    const p=new URLSearchParams({folder:'all',sort:S.sort,order:S.order,kinds:'photo,video',with_labels:'1'});
     if(S.fav)p.set('fav','1');
+    if(S.labelId)p.set('label_id',S.labelId);
     let files=[],lockedHidden=0;
     try{const r=await api('/api/files?'+p);files=r.files||[];lockedHidden=r.locked_hidden||0}catch(e){}
+    S.files=files;
     const ln=document.getElementById('lockNote');
     if(ln){ln.classList.toggle('hidden',!lockedHidden);if(lockedHidden)ln.textContent='🔒 '+lockedHidden+' item di folder terkunci disembunyikan.'}
-    // grup per bulan (YYYY-MM)
+    // grup per bulan (YYYY-MM) — dipakai juga untuk tampilan label (timeline sama)
     const groups={};
     files.forEach(f=>{const ym=(f.taken_at||f.uploaded_at||'').slice(0,7);if(ym)(groups[ym]=groups[ym]||[]).push(f)});
     const keys=Object.keys(groups).sort((a,b)=>S.order==='asc'?a.localeCompare(b):b.localeCompare(a));
     if(S.view==='list'){
-      tl.innerHTML=keys.map(k=>'<div class="tl-group"><div class="tl-head">'+esc(mlabel(k))+' <span class="tl-count">'+groups[k].length+' item</span></div>'+
+      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k))+'"><div class="tl-head">'+esc(mlabel(k))+' <span class="tl-count">'+groups[k].length+' item</span></div>'+
         groups[k].map(f=>{const gi=files.indexOf(f);
-          return '<div class="prow" data-gi="'+gi+'"><div class="pthumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+(f.kind==='video'?'🎬':'🖼')+'</div><div class="pmeta"><div class="nm">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' · '+esc(dlabel(f))+'</div></div></div>'}).join('')+'</div>').join('');
+          return '<div class="prow'+(sel.mode?' selecting':'')+'" data-gi="'+gi+'"><div class="chk">✓</div><div class="pthumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+(f.kind==='video'?'🎬':'🖼')+'</div><div class="pmeta"><div class="nm">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' · '+esc(dlabel(f))+'</div></div></div>'}).join('')+'</div>').join('');
     }else{
-      tl.innerHTML=keys.map(k=>'<div class="tl-group"><div class="tl-head">'+esc(mlabel(k))+' <span class="tl-count">'+groups[k].length+' item</span></div><div class="tl-grid'+(S.view==='compact'?' compact':'')+'">'+
+      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k))+'"><div class="tl-head">'+esc(mlabel(k))+' <span class="tl-count">'+groups[k].length+' item</span></div><div class="tl-grid'+(S.view==='compact'?' compact':'')+(sel.mode?' selecting':'')+'">'+
         groups[k].map(f=>thumb(f,files.indexOf(f))).join('')+'</div></div>').join('');
     }
     empty.classList.toggle('hidden',files.length>0);
-    tl.querySelectorAll('[data-gi]').forEach(el=>el.onclick=()=>openLightbox(files,+el.dataset.gi));
+    tl.querySelectorAll('[data-gi]').forEach(el=>{
+      const gi=+el.dataset.gi;
+      el.onclick=()=>{if(sel.mode)togglePSel(gi);else openLightbox(S.files,gi)};
+      let lpT=null;
+      const swallow=()=>{const h=e=>{e.stopPropagation();e.preventDefault();window.removeEventListener('click',h,true)};
+        window.addEventListener('click',h,true);setTimeout(()=>window.removeEventListener('click',h,true),700)};
+      el.addEventListener('pointerdown',()=>{if(sel.mode)return;lpT=setTimeout(()=>{enterPSelMode();togglePSel(gi);swallow()},450)});
+      ['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,()=>clearTimeout(lpT)));
+    });
+    syncPSelUI();
+    refreshScrub();
   }
-  document.getElementById('psort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;load()};
-  document.getElementById('favToggle').onclick=e=>{S.fav=!S.fav;e.target.style.borderColor=S.fav?'var(--acc)':'';load()};
+
+  /* ---------- aksi massal ---------- */
+  document.getElementById('pselModeBtn').onclick=()=>sel.mode?exitPSelMode():enterPSelMode();
+  document.getElementById('pselCancelBtn').onclick=exitPSelMode;
+  document.getElementById('pselAllBtn').onclick=()=>{
+    sel.ids=new Set(S.files.map(f=>f.id));syncPSelUI();
+    notify(sel.ids.size+' foto dipilih.','info');
+  };
+  document.getElementById('pLabBtn').onclick=async()=>{
+    const ids=[...sel.ids];if(!ids.length)return;
+    const ll=await pickLabelsForBulk();if(!ll||!ll.length)return;
+    try{
+      await api('/api/files/bulk-label',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:ids,label_ids:ll})});
+      notify('Label ditambahkan ke '+ids.length+' foto.','ok');exitPSelMode();load();
+    }catch(e){notify('Gagal: '+e.message,'err')}
+  };
+  document.getElementById('pFavBtn').onclick=async()=>{
+    const ids=[...sel.ids];if(!ids.length)return;
+    try{
+      const r=await api('/api/files/bulk-favorite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:ids,fav:true})});
+      notify(r.count+' foto ditandai favorit.','ok');exitPSelMode();load();
+    }catch(e){notify('Gagal: '+e.message,'err')}
+  };
+  document.getElementById('pDlBtn').onclick=()=>{
+    const ids=[...sel.ids];if(!ids.length)return;
+    notify(ids.length>1?'Menyiapkan ZIP berisi '+ids.length+' file…':'Mengunduh 1 file…','info');
+    location.href='/api/files/download-zip?ids='+ids.join(',');
+    exitPSelMode();
+  };
+  document.getElementById('pDelBtn').onclick=async()=>{
+    const ids=[...sel.ids];if(!ids.length)return;
+    if(!await confirmDlg({ico:'🗑',title:'Hapus '+ids.length+' foto?',msg:'Dipindah ke Tong Sampah. Bisa dikembalikan dalam 7 hari.',yes:'Ya, hapus',danger:true}))return;
+    try{
+      await api('/api/files/bulk-trash',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_ids:ids,folder_ids:[]})});
+      exitPSelMode();load();
+      notify(ids.length+' foto dipindah ke Tong Sampah.','ok');
+    }catch(e){notify('Gagal: '+e.message,'err')}
+  };
+
+  document.getElementById('psort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;exitPSelMode();load()};
+  document.getElementById('labManageBtn').onclick=manageLabels;
   document.querySelectorAll('#pview button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;document.querySelectorAll('#pview button').forEach(x=>x.classList.toggle('on',x===b));load()});
-  load();
+  loadLabels().then(load);
 }
