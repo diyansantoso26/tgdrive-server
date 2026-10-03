@@ -159,6 +159,8 @@ label.btn{cursor:pointer}
 .lockrow:last-child{border-bottom:none}
 .lockrow .lname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lockrow button{flex:none;padding:7px 12px;font-size:.82rem;white-space:nowrap}
+/* kalahkan .login-card .btn{width:100%} yang menindih tombol di baris folder */
+.login-card .lockrow button{width:auto}
 /* ---- PIN & badge kunci folder ---- */
 .pinwrap{position:relative;margin-bottom:10px}
 .pinwrap input{width:100%;padding-right:44px;margin-bottom:0}
