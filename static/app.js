@@ -5,22 +5,38 @@ async function api(url,opts){const r=await fetch(url,opts);const j=await r.json(
 function fmtDate(iso){if(!iso)return'';const d=new Date(iso);return d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}
 function fmtDay(iso){const d=new Date(iso),t=new Date();const day=x=>x.toDateString();if(day(d)===day(t))return'Hari Ini';const y=new Date(t);y.setDate(y.getDate()-1);if(day(d)===day(y))return'Kemarin';return d.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
 
-/* ---------- storage info ---------- */
+/* ---------- storage info & batas upload ---------- */
 let MAX_UPLOAD=20*1024*1024; // batas upload aktual, diambil dari server
 const CF_LIMIT=100*1024*1024; // batas Cloudflare per request (hanya via domain)
 // ON_DIRECT diset server via base.html (akurat: bandingkan host dgn direct_url admin)
 if(typeof ON_DIRECT==='undefined'){var ON_DIRECT=/^\d{1,3}(\.\d{1,3}){3}$/.test(location.hostname)}
+// LIM: batas per user dari server (dipakai routing upload)
+let LIM={maxUpload:20*1024*1024,cfLimit:100*1024*1024,resumeThreshold:10*1024*1024,isPro:false,directUrl:''};
 (async()=>{try{const s=await api('/api/storage');const el=document.getElementById('storageInfo');if(el)el.textContent=fmtSize(s.bytes)+' • '+s.count+' file';if(s.max_upload_bytes)MAX_UPLOAD=s.max_upload_bytes}catch(e){}})();
+(async()=>{try{const l=await api('/api/upload-limits');
+  LIM={maxUpload:l.max_upload_bytes,cfLimit:l.cf_limit_bytes,resumeThreshold:l.resume_threshold_bytes,isPro:!!l.is_pro,directUrl:l.direct_url||''};
+  MAX_UPLOAD=l.max_upload_bytes;
+}catch(e){}})();
 
 /* ---------- lightbox ---------- */
-let lbItems=[],lbIdx=0;
-function openLightbox(items,i){lbItems=items;lbIdx=i;renderLb();document.getElementById('lightbox').classList.remove('hidden')}
+let lbItems=[],lbIdx=0,lbSrc='';
+async function dlHref(it){
+  // file >100MB: via jalur langsung (hindari timeout Cloudflare), pakai token
+  if((it.size||0)>LIM.cfLimit&&LIM.isPro&&LIM.directUrl){
+    try{
+      const t=await api('/api/download-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:it.id})});
+      if(t.url)return t.url;
+    }catch(e){/* fallback ke domain */}
+  }
+  return '/file/'+it.id+'/download';
+}
+async function openLightbox(items,i){lbItems=items;lbIdx=i;lbSrc=await dlHref(items[i]);renderLb();document.getElementById('lightbox').classList.remove('hidden')}
 function renderLb(){const it=lbItems[lbIdx];if(!it)return;const b=document.getElementById('lbBody');
-  if(it.kind==='video')b.innerHTML='<video src="/file/'+it.id+'/download" controls autoplay style="max-height:80vh"></video>';
-  else if(it.kind==='photo')b.innerHTML='<img src="/file/'+it.id+'/download">';
-  else b.innerHTML='<div style="color:#ccc">Pratinjau tidak tersedia.<br><a href="/file/'+it.id+'/download">Unduh '+esc(it.name)+'</a></div>';
+  if(it.kind==='video')b.innerHTML='<video src="'+lbSrc+'" controls autoplay style="max-height:80vh"></video>';
+  else if(it.kind==='photo')b.innerHTML='<img src="'+lbSrc+'">';
+  else b.innerHTML='<div style="color:#ccc">Pratinjau tidak tersedia.<br><a href="'+lbSrc+'">Unduh '+esc(it.name)+'</a></div>';
   document.getElementById('lbCap').textContent=it.name+' • '+fmtSize(it.size)}
-function lbNav(d){if(!lbItems.length)return;lbIdx=(lbIdx+d+lbItems.length)%lbItems.length;renderLb()}
+async function lbNav(d){if(!lbItems.length)return;lbIdx=(lbIdx+lbItems.length+d)%lbItems.length;lbSrc=await dlHref(lbItems[lbIdx]);renderLb()}
 function closeLightbox(){document.getElementById('lightbox').classList.add('hidden');document.getElementById('lbBody').innerHTML=''}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox();if(!document.getElementById('lightbox').classList.contains('hidden')){if(e.key==='ArrowRight')lbNav(1);if(e.key==='ArrowLeft')lbNav(-1)}});
 
@@ -234,7 +250,7 @@ function initDrive(){
   }
   async function act(a,it){
     try{
-      if(a==='dl')location.href='/file/'+it.id+'/download';
+      if(a==='dl'){location.href=await dlHref(it)}
       else if(a==='trash'&&confirm('Pindahkan "'+it.name+'" ke tong sampah?')){
         await api('/api/files/'+it.id+'/trash',{method:'POST'});load();
         pushUndo('pindahkan "'+it.name+'" ke tong sampah',
@@ -449,8 +465,8 @@ function initDrive(){
     const ready=[];
     for(const j of jobs){
       const f=j.file;
-      if(f.size>MAX_UPLOAD){qitem(f.name,'File maksimal '+fmtSize(MAX_UPLOAD)+'.',true);continue}
-      if(f.size>CF_LIMIT&&!ON_DIRECT){qitem(f.name,'⚠ Di atas 100 MB — tidak bisa upload lewat domain (batas Cloudflare). Kecilkan di bawah 100 MB atau pakai ⚡ Max Speed (PRO).',true);continue}
+      if(f.size>LIM.maxUpload){qitem(f.name,'File maksimal '+fmtSize(LIM.maxUpload)+'.',true);continue}
+      if(!LIM.isPro&&f.size>LIM.cfLimit){qitem(f.name,'⚠ Di atas 100 MB — khusus pengguna PRO. <a href="/upgrade">Upgrade ke PRO</a>',true);continue}
       let action='upload', overwriteId=null;
       try{
         const chk=await api('/api/check-duplicate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name,size:f.size,folder_id:j.folderId})});
@@ -471,7 +487,9 @@ function initDrive(){
     async function worker(){
       while(idx<ready.length){
         const j=ready[idx++];
-        await doUploadP(j.f,j.overwriteId,j.folderId,1);
+        // >=10MB: upload chunked (resume); di bawah itu: upload biasa sekali kirim
+        if(j.f.size>=LIM.resumeThreshold) await doUploadChunked(j.f,j.overwriteId,j.folderId);
+        else await doUploadP(j.f,j.overwriteId,j.folderId,1);
       }
     }
     await Promise.all([worker(),worker(),worker()]);
@@ -518,6 +536,129 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     row.status.textContent='Mengupload…';x.send(fd);
     });
   }
+
+  /* ---------- upload chunked / resume (>=10MB) ---------- */
+  function saveLocalSession(x){try{const k='tgd_uploads';const a=JSON.parse(localStorage.getItem(k)||'[]').filter(y=>y.upload_id!==x.upload_id);a.push(x);localStorage.setItem(k,JSON.stringify(a))}catch(e){}}
+  function clearLocalSession(id){try{const k='tgd_uploads';localStorage.setItem(k,JSON.stringify(JSON.parse(localStorage.getItem(k)||'[]').filter(y=>y.upload_id!==id)))}catch(e){}}
+  function getLocalSessions(){try{return JSON.parse(localStorage.getItem('tgd_uploads')||'[]')}catch(e){return[]}}
+
+  // tombol Jeda/Lanjut + Batal untuk baris upload chunked
+  function addChunkControls(row,ctx,lbl){
+    const ctl=document.createElement('span');ctl.style.marginLeft='8px';
+    const bP=document.createElement('button');bP.className='btn ghost';bP.style.cssText='padding:2px 10px;font-size:.78rem';bP.textContent='Jeda';
+    const bC=document.createElement('button');bC.className='btn ghost';bC.style.cssText='padding:2px 10px;font-size:.78rem;margin-left:6px';bC.textContent='Batal';
+    ctl.appendChild(bP);ctl.appendChild(bC);row.status.appendChild(ctl);
+    bP.onclick=()=>{ctx.paused=!ctx.paused;bP.textContent=ctx.paused?'Lanjut':'Jeda';
+      if(ctx.paused)lbl.textContent='Dijeda — klik Lanjut untuk meneruskan. ';
+      else{if(ctx._resume)ctx._resume()}};
+    bC.onclick=async()=>{ctx.cancelled=true;if(ctx._resume)ctx._resume();
+      try{if(ctx.upload_id){const fd=new FormData();fd.append('upload_id',ctx.upload_id);await fetch('/api/upload/cancel',{method:'POST',body:fd})}}catch(e){}
+      if(ctx.upload_id)clearLocalSession(ctx.upload_id);
+      lbl.textContent='Dibatalkan. ';ctl.remove();setTimeout(()=>row.el.remove(),2000)};
+    return ctl;
+  }
+
+  // loop utama: kirim potongan yang belum ada, dukung jeda/lanjut & retry
+  async function runChunkedUpload(ctx){
+    const file=ctx.file,row=ctx.row,upload_id=ctx.upload_id,chunk_size=ctx.chunk_size,total=ctx.total;
+    const lbl=ctx.lbl;
+    let have=new Set();
+    try{const st=await api('/api/upload/status?upload_id='+encodeURIComponent(upload_id));have=new Set(st.received||[])}catch(e){}
+    let done=have.size;
+    const setPct=()=>{const pc=Math.round(done/total*100);row.bar.style.width=pc+'%';return pc};
+    setPct();
+    if(done>0)lbl.textContent='Melanjutkan dari '+Math.round(done/total*100)+'%… ';
+    let lastT=Date.now(),lastB=done*chunk_size;
+    for(let i=0;i<total;i++){
+      if(ctx.cancelled)throw new Error('Dibatalkan');
+      while(ctx.paused&&!ctx.cancelled){await new Promise(r=>ctx._resume=r)}
+      if(ctx.cancelled)throw new Error('Dibatalkan');
+      if(have.has(i))continue;
+      const blob=file.slice(i*chunk_size,Math.min(file.size,(i+1)*chunk_size));
+      let ok=false,lastErr='';
+      for(let a=1;a<=3&&!ok;a++){
+        try{
+          const fd=new FormData();
+          fd.append('upload_id',upload_id);fd.append('chunk_index',i);fd.append('chunk',blob,'c'+i);
+          const r=await fetch('/api/upload/chunk',{method:'POST',body:fd});
+          const j=await r.json().catch(()=>({}));
+          if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+          ok=true;done++;have.add(i);
+        }catch(e){lastErr=e.message;if(a<3)await new Promise(r=>setTimeout(r,a*2000))}
+      }
+      if(!ok)throw new Error('Potongan '+(i+1)+'/'+total+' gagal: '+lastErr);
+      const pc=setPct(),now=Date.now(),dt=(now-lastT)/1000;
+      if(dt>=0.5){const b=done*chunk_size,spd=(b-lastB)/dt;lastT=now;lastB=b;
+        row.spd.textContent=fmtSpd(spd)+' • '+pc+'%'}
+      lbl.textContent='Mengupload '+done+'/'+total+' potongan… ';
+    }
+    lbl.textContent='Merakit & mengirim ke Telegram, mohon tunggu… ';row.spd.textContent='';
+    const fd=new FormData();fd.append('upload_id',upload_id);
+    const r=await fetch('/api/upload/complete',{method:'POST',body:fd});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+    return j;
+  }
+
+  async function doUploadChunked(f,overwriteId,folderId){
+    const row=qitem(f.name,'');
+    const lbl=document.createElement('span');row.status.appendChild(lbl);
+    const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0};
+    const ctl=addChunkControls(row,ctx,lbl);
+    try{
+      lbl.textContent='Menyiapkan… ';
+      const init=await api('/api/upload/init',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:f.name,file_size:f.size,folder_id:folderId,overwrite_id:overwriteId})});
+      Object.assign(ctx,{upload_id:init.upload_id,chunk_size:init.chunk_size,total:init.total_chunks});
+      saveLocalSession({upload_id:init.upload_id,name:f.name,size:f.size,lastModified:f.lastModified,
+        folderId:folderId,chunk_size:init.chunk_size,total:init.total_chunks});
+      const j=await runChunkedUpload(ctx);
+      clearLocalSession(ctx.upload_id);
+      lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
+      ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
+    }catch(e){
+      if(ctx.cancelled)return;
+      row.el.classList.add('err');ctl.remove();
+      lbl.textContent='Gagal: '+e.message+' ';
+      const rb=document.createElement('button');rb.className='btn ghost';rb.style.cssText='padding:2px 10px;font-size:.78rem';rb.textContent='Coba lagi';
+      rb.onclick=()=>{row.el.remove();doUploadChunked(f,overwriteId,folderId)};
+      row.status.appendChild(rb);
+    }
+  }
+
+  // resume lintas buka aplikasi: sesi aktif di server + file dipilih ulang user
+  async function checkPendingUploads(){
+    let sessions=[];try{sessions=(await api('/api/upload/sessions')).sessions||[]}catch(e){return}
+    if(!sessions.length)return;
+    queue.classList.remove('hidden');
+    for(const s of sessions){
+      const row=qitem(s.name,'');
+      const lbl=document.createElement('span');
+      lbl.textContent='Belum selesai ('+s.received+'/'+s.total_chunks+' potongan). Pilih file yang sama untuk melanjutkan. ';
+      row.status.appendChild(lbl);
+      const inp=document.createElement('input');inp.type='file';inp.style.display='none';row.el.appendChild(inp);
+      const bp=document.createElement('button');bp.className='btn ghost';bp.style.cssText='padding:2px 10px;font-size:.78rem';bp.textContent='Pilih file & lanjutkan';
+      const bc=document.createElement('button');bc.className='btn ghost';bc.style.cssText='padding:2px 10px;font-size:.78rem;margin-left:6px';bc.textContent='Hapus';
+      row.status.appendChild(bp);row.status.appendChild(bc);
+      bp.onclick=()=>inp.click();
+      bc.onclick=async()=>{try{const fd=new FormData();fd.append('upload_id',s.upload_id);await fetch('/api/upload/cancel',{method:'POST',body:fd})}catch(e){}
+        clearLocalSession(s.upload_id);row.el.remove()};
+      inp.onchange=async()=>{
+        const f=inp.files[0];if(!f)return;
+        if(f.name!==s.name||f.size!==s.size){lbl.textContent='File tidak cocok — nama & ukuran harus sama persis dengan sebelumnya. ';return}
+        bp.remove();bc.remove();inp.remove();
+        const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:s.upload_id,chunk_size:s.chunk_size,total:s.total_chunks};
+        const ctl=addChunkControls(row,ctx,lbl);
+        try{
+          const j=await runChunkedUpload(ctx);
+          clearLocalSession(s.upload_id);
+          lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
+          ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
+        }catch(e){if(!ctx.cancelled){row.el.classList.add('err');ctl.remove();lbl.textContent='Gagal: '+e.message}}
+      };
+    }
+  }
+
   function qitem(name,status,isErr){const el=document.createElement('div');el.className='qitem'+(isErr?' err':'');
     el.innerHTML='<div><b>'+esc(name)+'</b> — <span></span> <span class="spd"></span></div><div class="bar"><i></i></div>';
     queue.appendChild(el);return{el,status:el.querySelector('span'),spd:el.querySelector('.spd'),bar:el.querySelector('.bar i')}}
@@ -541,6 +682,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
 
   document.addEventListener('click',e=>{if(!e.target.closest('#ctxmenu'))hideCtxMenu()});
   loadFolders().then(load);
+  checkPendingUploads(); // tampilkan upload chunked yang belum selesai (resume)
 }
 
 /* ---------- SETTINGS ---------- */
@@ -608,58 +750,11 @@ function initSettings(){
     location.href=base+location.pathname+location.search; // fallback: navigasi biasa
   }
   window.handoffGo=handoffGo; // dipakai juga oleh drive.html
-  async function loadMaxSpeed(){
-    const body=document.getElementById('msBody');
-    let info=null;
-    try{info=await api('/api/server-info')}catch(e){info=null}
-    if(!info||info.error){
-      body.innerHTML='<p class="muted">⚡ Max Speed khusus pengguna <b>PRO</b>. Hubungi admin untuk upgrade.</p>';
-      return;
-    }
-    const onDirect=ON_DIRECT;
-    body.innerHTML=
-      '<p style="font-size:.9rem;margin-bottom:10px">Terhubung via: <b>'+esc(location.host)+'</b> '+
-      (onDirect?'<span style="color:#ffd98a">⚡ jalur langsung</span>':'<span class="muted">🌐 domain</span>')+'</p>'+
-      '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.95rem">'+
-      '<input type="checkbox" id="msToggle" '+(info.max_speed?'checked':'')+' style="width:20px;height:20px;accent-color:var(--acc)">'+
-      '<b>Max Speed aktif</b></label>'+
-      '<p class="muted" style="font-size:.85rem;margin:8px 0 10px">Aktif = memakai jalur langsung (IP publik) — tanpa batas ±100 MB Cloudflare, upload lebih cepat.'+
-      (info.direct_url?'':'<br><span style="color:var(--danger)">Jalur langsung belum diatur admin.</span>')+'</p>'+
-      '<div id="msMsg" style="font-size:.85rem;margin-bottom:6px"></div>'+
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-      (onDirect
-        ?'<button class="btn ghost" id="msBack">← Kembali ke domain</button>'
-        :(info.direct_url&&info.max_speed?'<button class="btn primary" id="msGo">⚡ Pindah ke jalur langsung</button>':'')
-      )+'</div>';
-    const msg=document.getElementById('msMsg');
-    const sayM=(t,ok)=>{msg.textContent=t||'';msg.style.color=ok?'#7ddf9a':'var(--danger)'};
-    document.getElementById('msToggle').onchange=async(ev)=>{
-      const want=ev.target.checked;
-      sayM(want?'Mengaktifkan…':'Menonaktifkan…');
-      try{
-        const r=await api('/api/max-speed',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_speed:want})});
-        if(!r.ok)throw new Error('gagal');
-        sayM(want?'Max Speed aktif ✓':'Max Speed dimatikan ✓',true);
-        setTimeout(()=>{
-          if(want&&info.direct_url){handoffGo(info.direct_url)}
-          else if(!want&&onDirect&&info.domain_url){handoffGo(info.domain_url)}
-          else loadMaxSpeed();
-        },800);
-      }catch(e){ev.target.checked=!want;sayM(e.message,false)}
-    };
-    const go=document.getElementById('msGo');
-    if(go)go.onclick=()=>{handoffGo(info.direct_url)};
-    const back=document.getElementById('msBack');
-    if(back)back.onclick=async()=>{
-      sayM('Menonaktifkan Max Speed…');
-      try{await api('/api/max-speed',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_speed:false})})}catch(e){}
-      handoffGo(info.domain_url);
-    };
-  }
-  loadMaxSpeed();
+
   /* --- sumber daya --- */
   function setBar(id,frac,txt){const b=document.getElementById(id);b.style.width=Math.min(100,frac*100)+'%';document.getElementById(id+'T').textContent=txt}
   async function pollSys(){
+    if(!document.getElementById('rCpu'))return; // hanya admin yang melihat sumber daya
     try{
       const r=await api('/api/sysinfo');
       setBar('rCpu',r.cpu_pct/100,r.cpu_pct.toFixed(0)+'%');
@@ -690,14 +785,32 @@ function initSettings(){
   const pinMsg=document.getElementById('pinMsg');
   const pinSay=(t,ok)=>{pinMsg.textContent=t||'';pinMsg.style.color=ok?'#7ddf9a':'var(--danger)'};
   let pinSet=false;
+  // tombol intip PIN
+  document.querySelectorAll('.eyebtn').forEach(b=>b.onclick=()=>{
+    const i=document.getElementById(b.dataset.for);if(!i)return;
+    const show=i.type==='password';i.type=show?'text':'password';
+    b.textContent=show?'🙈':'👁';
+  });
   async function loadLock(){
     try{
       const s=await api('/api/lock/status');pinSet=s.pin_set;
-      document.getElementById('pinStatus').textContent=pinSet?'PIN sudah diatur.':'Belum ada PIN — atur dulu sebelum mengunci folder.';
+      const badge=document.getElementById('pinBadge');
+      badge.textContent=pinSet?'PIN aktif':'Belum ada PIN';
+      badge.className='pill '+(pinSet?'ok':'warn');
+      document.getElementById('pinStatus').textContent=pinSet
+        ?'Folder terkunci hanya bisa dibuka dengan PIN ini.'
+        :'Atur PIN dulu sebelum bisa mengunci folder.';
+      document.getElementById('pinFormTitle').textContent=pinSet?'Ganti PIN keamanan':'Atur PIN keamanan';
+      document.getElementById('pinNewLabel').textContent=pinSet?'PIN baru (4–12 digit angka)':'PIN (4–12 digit angka)';
       document.getElementById('pinOldWrap').classList.toggle('hidden',!pinSet);
       const fs=(await api('/api/folders')).folders||[];
+      const locked=fs.filter(f=>f.is_locked), unlocked=fs.filter(f=>!f.is_locked);
+      document.getElementById('lockCount').textContent=fs.length?(locked.length+' dari '+fs.length+' terkunci'):'';
+      const row=f=>'<div class="lockrow"><span>'+(f.is_locked?'🔒 ':'')+esc(f.name)+'</span><button class="btn ghost lkbtn" data-id="'+f.id+'" data-lk="'+(f.is_locked?1:0)+'">'+(f.is_locked?'Buka kunci':'🔒 Kunci')+'</button></div>';
       const box=document.getElementById('lockFolders');
-      box.innerHTML=fs.map(f=>'<div class="lockrow"><span>'+(f.is_locked?'🔒 ':'')+esc(f.name)+'</span><button class="btn ghost" data-id="'+f.id+'" data-lk="'+(f.is_locked?1:0)+'">'+(f.is_locked?'Buka kunci':'Kunci')+'</button></div>').join('')||'<div class="muted">Belum ada folder.</div>';
+      box.innerHTML=(locked.length?'<div class="locknote">Terkunci</div>'+locked.map(row).join(''):'')+
+        (unlocked.length?'<div class="locknote" style="margin-top:8px">Tidak terkunci</div>'+unlocked.map(row).join(''):'')||
+        '<div class="muted">Belum ada folder. Buat folder dulu di halaman Drive.</div>';
       box.querySelectorAll('button').forEach(b=>b.onclick=()=>toggleLock(+b.dataset.id,b.dataset.lk==='1'));
     }catch(e){pinSay(e.message,false)}
   }
