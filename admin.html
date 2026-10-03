@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% set active='admin' %}
+{% block title %}Admin — TG Drive{% endblock %}
+{% block content %}
+<h2>Panel Admin</h2>
+<div class="cards" id="statsCards" style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0"></div>
+
+<h3>Pengguna</h3>
+<div class="tablewrap"><table class="tbl" id="userTbl">
+  <thead><tr><th>User</th><th>Role</th><th>PRO</th><th>Kuota</th><th>Terpakai</th><th>Status</th><th>Aksi</th></tr></thead>
+  <tbody></tbody>
+</table></div>
+
+<h3>Kode Undangan</h3>
+<div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+  <input id="invCode" placeholder="Kode (kosong = acak)" style="width:180px">
+  <input id="invBonus" type="number" placeholder="Bonus kuota MB" style="width:140px">
+  <input id="invUses" type="number" placeholder="Jatah pakai" value="1" style="width:110px">
+  <button class="btn primary" onclick="addInvite()">Buat kode</button>
+</div>
+<div class="tablewrap"><table class="tbl" id="invTbl">
+  <thead><tr><th>Kode</th><th>Bonus MB</th><th>Terpakai</th><th>Aktif</th><th>Aksi</th></tr></thead>
+  <tbody></tbody>
+</table></div>
+
+<h3>Pengaturan</h3>
+<div class="card">
+  <label>Mode registrasi
+    <select id="regMode">
+      <option value="open">Terbuka</option>
+      <option value="invite">Kode undangan</option>
+      <option value="closed">Ditutup</option>
+    </select>
+  </label>
+  <label>URL jalur langsung (mode upload besar / IP:port)
+    <input id="directUrl" placeholder="http://IP:8443" style="width:100%">
+  </label>
+  <label>URL domain utama (untuk kembali dari jalur langsung)
+    <input id="domainUrl" placeholder="https://drive.gtg.my.id" style="width:100%">
+  </label>
+  <label>Durasi token pindah domain (detik, 10–600)
+    <input id="handoffTtl" type="number" min="10" max="600" value="90" style="width:100%">
+  </label>
+  <label>Nomor WhatsApp admin (untuk konfirmasi pembayaran, cth 6281234567890)
+    <input id="waNumber" placeholder="628..." style="width:100%">
+  </label>
+  <label>Username Telegram admin (tanpa @, untuk tombol konfirmasi Telegram)
+    <input id="tgUser" placeholder="cth gtg_official" style="width:100%">
+  </label>
+  <button class="btn primary" onclick="saveSettings()">Simpan</button>
+</div>
+
+<h3>Harga Lisensi</h3>
+<div class="card">
+  <p class="muted" style="margin-bottom:10px">Harga tampil di halaman Upgrade. Kosongkan bila belum ditentukan (tampil "Hubungi admin").</p>
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <label style="flex:1;min-width:150px">PRO Bulanan (Rp)<input id="priceMonthly" placeholder="cth 25000" style="width:100%"></label>
+    <label style="flex:1;min-width:150px">PRO Tahunan (Rp)<input id="priceYearly" placeholder="cth 200000" style="width:100%"></label>
+    <label style="flex:1;min-width:150px">PRO Lifetime (Rp)<input id="priceLifetime" placeholder="cth 500000" style="width:100%"></label>
+  </div>
+  <button class="btn primary" onclick="saveSettings()" style="margin-top:8px">Simpan Harga</button>
+</div>
+
+<h3>Lisensi</h3>
+<div class="card">
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <select id="licTier">
+      <option value="pro_monthly">PRO Bulanan (30 hari)</option>
+      <option value="pro_yearly">PRO Tahunan (365 hari)</option>
+      <option value="pro_lifetime">PRO Lifetime</option>
+    </select>
+    <input id="licQuota" type="number" placeholder="Kuota MB (cth 204800)" style="width:180px">
+    <input id="licCount" type="number" min="1" max="50" value="1" style="width:90px" title="Jumlah kode">
+    <input id="licNote" placeholder="Catatan (cth: untuk Budi)" style="flex:1;min-width:150px">
+    <button class="btn primary" onclick="addLicense()">Buat Kode</button>
+  </div>
+  <p class="muted" style="font-size:.85rem">Kuota kosong = pakai default paket. Kuota user hanya naik saat redeem (tidak turun otomatis). Kode sekali pakai, bisa dicabut.</p>
+  <div id="licNew" style="margin:8px 0;font-size:.9rem"></div>
+  <table id="licTbl" style="width:100%;font-size:.85rem"><thead><tr><th>Kode</th><th>Paket</th><th>Status</th><th>Dipakai</th><th>Kedaluwarsa</th><th>Aksi</th></tr></thead><tbody></tbody></table>
+</div>
+
+<h3>APK</h3>
+<div class="card">
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input id="apkCode" type="number" placeholder="version_code" style="width:130px">
+    <input id="apkName" placeholder="version_name (cth 1.1)" style="width:150px">
+    <input id="apkUrl" placeholder="URL APK" style="flex:1;min-width:200px">
+    <button class="btn primary" onclick="saveApk()">Simpan</button>
+  </div>
+  <p class="muted">Taruh file APK di folder apk (lihat pengaturan apk_dir), lalu isi versi di sini agar aplikasi menawarkan update.</p>
+</div>
+
+<h3>Aplikasi Windows</h3>
+<div class="card">
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input id="winCode" type="number" placeholder="version_code" style="width:130px">
+    <input id="winName" placeholder="version_name (cth 1.0)" style="width:150px">
+    <input id="winUrl" placeholder="URL installer .exe" style="flex:1;min-width:200px">
+    <button class="btn primary" onclick="saveApk()">Simpan</button>
+  </div>
+  <p class="muted">Taruh file installer .exe di folder apk, lalu isi versi di sini agar aplikasi Windows menawarkan update.</p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $=s=>document.querySelector(s);
+async function j(u,o){const r=await fetch(u,o);const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||r.status);return d;}
+function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':mb+' MB';}
+
+async function loadStats(){
+  const d=await j('/api/admin/stats');
+  $('#statsCards').innerHTML=
+    `<div class="card"><b>${d.total_users}</b><br><span class="muted">pengguna</span></div>
+     <div class="card"><b>${d.pro_users}</b><br><span class="muted">PRO</span></div>
+     <div class="card"><b>${(d.total_bytes/1073741824).toFixed(2)} GB</b><br><span class="muted">total terpakai</span></div>
+     <div class="card"><b>${d.active_users}</b><br><span class="muted">aktif</span></div>`;
+}
+async function loadUsers(){
+  const d=await j('/api/admin/users');
+  const tb=$('#userTbl tbody');tb.innerHTML='';
+  d.users.forEach(u=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${esc(u.display_name||u.username)}${u.display_name?'<br><small class="muted">@'+esc(u.username)+'</small>':''}${u.role=='admin'?' 👑':''}</td>
+      <td>${u.role}</td>
+      <td><button class="btn sm" onclick="patchUser(${u.id},{is_pro:${u.is_pro?0:1}})">${u.is_pro?'✅':'—'}</button></td>
+      <td>${fmtMB(u.quota_mb)} <button class="btn sm" onclick="setQuota(${u.id},${u.quota_mb})">✎</button></td>
+      <td>${(u.used_bytes/1073741824).toFixed(2)} GB (${u.file_count})</td>
+      <td><button class="btn sm" onclick="patchUser(${u.id},{is_active:${u.is_active?0:1}})">${u.is_active?'Aktif':'Nonaktif'}</button></td>
+      <td><button class="btn sm danger" onclick="delUser(${u.id},'${esc(u.username)}')">Hapus</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+async function patchUser(id,p){await j('/api/admin/users/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});loadUsers();loadStats();}
+async function setQuota(id,cur){const v=prompt('Kuota MB baru:',cur);if(v===null)return;await patchUser(id,{quota_mb:parseInt(v)||cur});}
+async function delUser(id,name){if(!confirm('Hapus "'+name+'" BESERTA SEMUA FILE & BOTNYA?'))return;await j('/api/admin/users/'+id,{method:'DELETE'});loadUsers();loadStats();}
+async function loadInv(){
+  const d=await j('/api/admin/invites');
+  $('#regMode').value=d.registration_mode;$('#directUrl').value=d.direct_url||'';$('#domainUrl').value=d.domain_url||'';$('#handoffTtl').value=d.handoff_token_ttl||90;$('#waNumber').value=d.wa_number||'';$('#tgUser').value=d.telegram_username||'';
+  $('#priceMonthly').value=(d.prices&&d.prices.license_price_monthly)||'';$('#priceYearly').value=(d.prices&&d.prices.license_price_yearly)||'';$('#priceLifetime').value=(d.prices&&d.prices.license_price_lifetime)||'';
+  const tb=$('#invTbl tbody');tb.innerHTML='';
+  d.invites.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><code>${esc(c.code)}</code></td><td>${c.bonus_quota_mb}</td>
+      <td>${c.used_count}/${c.max_uses}</td>
+      <td><button class="btn sm" onclick="togInv(${c.id},${c.is_active?0:1})">${c.is_active?'✅':'—'}</button></td>
+      <td><button class="btn sm danger" onclick="delInv(${c.id})">Hapus</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+async function addInvite(){
+  const d=await j('/api/admin/invites',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:$('#invCode').value,bonus_quota_mb:$('#invBonus').value,max_uses:$('#invUses').value})});
+  alert('Kode dibuat: '+d.code);$('#invCode').value='';loadInv();
+}
+async function delInv(id){await j('/api/admin/invites/'+id,{method:'DELETE'});loadInv();}
+async function togInv(id,a){await j('/api/admin/invites/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!!a})});loadInv();}
+async function saveSettings(){
+  await j('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({registration_mode:$('#regMode').value,direct_url:$('#directUrl').value,domain_url:$('#domainUrl').value,handoff_token_ttl:$('#handoffTtl').value,wa_number:$('#waNumber').value,telegram_username:$('#tgUser').value,
+      license_price_monthly:$('#priceMonthly').value,license_price_yearly:$('#priceYearly').value,license_price_lifetime:$('#priceLifetime').value})});
+  alert('Tersimpan');
+}
+async function saveApk(){
+  await j('/api/admin/apk',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({version_code:$('#apkCode').value,version_name:$('#apkName').value,apk_url:$('#apkUrl').value,
+      win_version_code:$('#winCode').value,win_version_name:$('#winName').value,win_url:$('#winUrl').value})});
+  alert('Versi tersimpan');
+}
+async function loadLic(){
+  const d=await j('/api/admin/licenses');
+  const tb=$('#licTbl tbody');tb.innerHTML='';
+  d.licenses.forEach(c=>{
+    const tr=document.createElement('tr');
+    const st=c.status!=='active'?'⛔ dicabut':(c.redeemed_by?('✅ dipakai'+(c.redeemed_username?' '+esc(c.redeemed_username):'')):'— belum dipakai');
+    const exp=c.expires_at?c.expires_at.slice(0,10):'selamanya';
+    tr.innerHTML=`<td><code>${esc(c.code)}</code></td><td>${esc(c.nama||c.tier)}</td><td>${st}</td><td>${c.redeemed_at?c.redeemed_at.slice(0,10):'—'}</td><td>${exp}</td>
+      <td><button class="btn sm" onclick="togLic(${c.id},${c.status==='active'?0:1})">${c.status==='active'?'Cabut':'Aktifkan'}</button>
+      <button class="btn sm danger" onclick="delLic(${c.id})">Hapus</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+async function addLicense(){
+  const d=await j('/api/admin/licenses',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tier:$('#licTier').value,quota_mb:$('#licQuota').value,count:$('#licCount').value,note:$('#licNote').value})});
+  $('#licNew').innerHTML='Kode baru: '+d.codes.map(c=>'<code>'+esc(c)+'</code>').join(' ');
+  $('#licNote').value='';loadLic();
+}
+async function togLic(id,revoke){await j('/api/admin/licenses/'+id+'/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revoked:!!revoke})});loadLic();}
+async function delLic(id){if(!confirm('Hapus kode lisensi ini?'))return;await j('/api/admin/licenses/'+id,{method:'DELETE'});loadLic();}
+loadStats();loadUsers();loadInv();loadLic();
+</script>
+<style>
+.tbl{width:100%;border-collapse:collapse}.tbl th,.tbl td{padding:8px;border-bottom:1px solid var(--line,#333);text-align:left;font-size:14px}
+.tablewrap{overflow-x:auto;margin-bottom:20px}.btn.sm{padding:4px 10px;font-size:13px}.btn.danger{background:#7a1f1f}
+.card{background:var(--card,#1c1c22);border:1px solid var(--line,#333);border-radius:10px;padding:12px;margin-bottom:16px}
+.card label{display:block;margin-bottom:10px}.card input,.card select{margin-top:4px;padding:8px;border-radius:8px;border:1px solid var(--line,#444);background:var(--bg,#111);color:inherit}
+</style>
+{% endblock %}
