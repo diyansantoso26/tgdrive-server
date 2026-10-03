@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import (Flask, abort, jsonify, make_response, redirect, render_template, request,
+from flask import (Flask, abort, g, jsonify, make_response, redirect, render_template, request,
                    send_file, session, url_for)
 from urllib.parse import quote, urlparse
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -65,7 +65,51 @@ def is_admin():
 
 
 def is_pro():
-    return bool(session.get('is_pro')) or is_admin()
+    if is_admin():
+        return True
+    if session.get('is_pro'):
+        return True
+    # lisensi: cek sekali per request (query ringan, lalu cache di g)
+    if hasattr(g, '_pro_license'):
+        return g._pro_license
+    uid_ = session.get('user_id')
+    g._pro_license = bool(uid_ and db.has_active_license(uid_))
+    return g._pro_license
+
+
+# ---------- paket lisensi ----------
+LICENSE_TIERS = {
+    'pro_monthly':  {'nama': 'PRO Bulanan',  'durasi_hari': 30,  'kuota_mb': 204800,  'max_upload_mb': 2048},
+    'pro_yearly':   {'nama': 'PRO Tahunan',  'durasi_hari': 365,  'kuota_mb': 512000,  'max_upload_mb': 2048},
+    'pro_lifetime': {'nama': 'PRO Lifetime', 'durasi_hari': None, 'kuota_mb': 1048576, 'max_upload_mb': 2048},
+}
+LICENSE_PRICES = {  # key setting -> tier
+    'license_price_monthly': 'pro_monthly',
+    'license_price_yearly': 'pro_yearly',
+    'license_price_lifetime': 'pro_lifetime',
+}
+
+
+def _tier_info():
+    out = []
+    for key, t in LICENSE_TIERS.items():
+        price_key = [k for k, v in LICENSE_PRICES.items() if v == key][0]
+        out.append({'tier': key, 'nama': t['nama'], 'durasi_hari': t['durasi_hari'],
+                    'kuota_mb': t['kuota_mb'], 'max_upload_mb': t['max_upload_mb'],
+                    'harga': (db.get_setting(price_key, '') or '').strip()})
+    return out
+
+
+def _do_login_session(u):
+    """Isi session Flask untuk user yang sudah tervalidasi (dipakai login biasa & handoff)."""
+    session['logged_in'] = True
+    session['user_id'] = u['id']
+    session['username'] = u['username']
+    session['role'] = u['role']
+    session['is_pro'] = bool(u['is_pro'])
+    session['unlocked_folders'] = []
+    session.permanent = True
+    db.log_activity('login', u['id'])
 
 
 # ---------- rate limit login/registrasi (per worker, sederhana) ----------
@@ -205,14 +249,7 @@ def login():
             u = db.get_user_auth(un)
             if u and u['is_active'] and u['password_hash'] and check_password_hash(u['password_hash'], pw):
                 _rate_clear(ip)
-                session['logged_in'] = True
-                session['user_id'] = u['id']
-                session['username'] = u['username']
-                session['role'] = u['role']
-                session['is_pro'] = bool(u['is_pro'])
-                session['unlocked_folders'] = []
-                session.permanent = True
-                db.log_activity('login', u['id'])
+                _do_login_session(u)
                 nxt = request.args.get('next') or url_for('drive')
                 return redirect(nxt)
             _rate_hit(ip)
@@ -275,6 +312,42 @@ def register():
 def logout():
     session.clear()
     return redirect(url_for('login'))
+
+
+# ---------- handoff login antar-domain (pindah domain/direct tanpa login ulang) ----------
+
+def _handoff_ttl():
+    try:
+        v = int(db.get_setting('handoff_token_ttl', 90) or 90)
+    except (TypeError, ValueError):
+        v = 90
+    return max(10, min(600, v))
+
+
+@app.route('/api/handoff-token', methods=['POST'])
+@login_required
+def api_handoff_token():
+    """Buatkan token login sekali pakai untuk user saat ini (dipakai pindah domain)."""
+    return jsonify({'token': db.create_login_token(uid(), _handoff_ttl())})
+
+
+@app.route('/auth/handoff')
+def auth_handoff():
+    """Tukar token sekali pakai menjadi session login, lalu redirect ke `next`."""
+    token = request.args.get('token') or ''
+    nxt = request.args.get('next') or url_for('drive')
+    # cegah open-redirect: hanya path relatif internal
+    if not nxt.startswith('/') or nxt.startswith('//'):
+        nxt = url_for('drive')
+    user_id = db.consume_login_token(token)
+    if not user_id:
+        return redirect(url_for('login', next=nxt, err='handoff'))
+    u = db.get_user(user_id)
+    if not u or not u['is_active']:
+        return redirect(url_for('login', next=nxt))
+    _do_login_session(u)
+    db.log_activity('handoff_login', user_id)
+    return redirect(nxt)
 
 
 def fmt_size(b):
@@ -1253,6 +1326,43 @@ def api_max_speed():
     return jsonify({'ok': True, 'max_speed': on})
 
 
+# ---------- lisensi (user) ----------
+
+@app.route('/upgrade')
+@login_required
+def upgrade_page():
+    lic = db.get_active_license(uid())
+    return render_template('upgrade.html', tiers=_tier_info(),
+                           my_license=lic,
+                           wa_number=(db.get_setting('wa_number', '') or '').strip(),
+                           qris_url=url_for('static', filename='qris.jpg'),
+                           is_pro=is_pro(), is_admin=is_admin())
+
+
+@app.route('/api/license/status')
+@login_required
+def api_license_status():
+    lic = db.get_active_license(uid())
+    if lic:
+        t = LICENSE_TIERS.get(lic['tier'], {})
+        lic = dict(lic)
+        lic['nama'] = t.get('nama', lic['tier'])
+    return jsonify({'license': lic, 'is_pro': is_pro()})
+
+
+@app.route('/api/license/redeem', methods=['POST'])
+@login_required
+def api_license_redeem():
+    data = request.get_json(force=True, silent=True) or {}
+    ok, msg, lic = db.redeem_license(data.get('code'), uid())
+    if not ok:
+        return jsonify({'error': msg}), 400
+    db.log_activity('license_redeem', uid(), detail='Redeem lisensi %s' % lic['code'])
+    return jsonify({'ok': True, 'message': msg,
+                    'expires_at': lic['expires_at'],
+                    'nama': LICENSE_TIERS.get(lic['tier'], {}).get('nama', lic['tier'])})
+
+
 # ---------- panel admin ----------
 
 @app.route('/admin')
@@ -1322,7 +1432,11 @@ def api_admin_invites():
     return jsonify({'invites': db.list_invite_codes(),
                     'registration_mode': db.get_setting('registration_mode', 'open'),
                     'direct_url': db.get_setting('direct_url', ''),
-                    'domain_url': db.get_setting('domain_url', 'https://drive.gtg.my.id')})
+                    'domain_url': db.get_setting('domain_url', 'https://drive.gtg.my.id'),
+                    'handoff_token_ttl': int(db.get_setting('handoff_token_ttl', 90) or 90),
+                    'wa_number': db.get_setting('wa_number', '') or '',
+                    'prices': {k: db.get_setting(k, '') or '' for k in
+                               ('license_price_monthly', 'license_price_yearly', 'license_price_lifetime')}})
 
 
 @app.route('/api/admin/invites', methods=['POST'])
@@ -1336,6 +1450,60 @@ def api_admin_invite_create():
                                 max_uses=int(data.get('max_uses') or 1),
                                 created_by=uid())
     return jsonify({'ok': True, 'id': cid, 'code': code})
+
+
+# ---------- lisensi (admin) ----------
+
+@app.route('/api/admin/licenses')
+@admin_required
+def api_admin_licenses():
+    lics = db.list_licenses()
+    for lic in lics:
+        lic['nama'] = LICENSE_TIERS.get(lic['tier'], {}).get('nama', lic['tier'])
+    return jsonify({'licenses': lics, 'tiers': _tier_info(),
+                    'wa_number': db.get_setting('wa_number', '') or ''})
+
+
+@app.route('/api/admin/licenses', methods=['POST'])
+@admin_required
+def api_admin_license_create():
+    data = request.get_json(force=True, silent=True) or {}
+    tier = data.get('tier')
+    if tier not in LICENSE_TIERS:
+        return jsonify({'error': 'Paket tidak dikenal.'}), 400
+    try:
+        count = max(1, min(50, int(data.get('count') or 1)))
+    except (TypeError, ValueError):
+        count = 1
+    t = LICENSE_TIERS[tier]
+    try:
+        quota = int(data.get('quota_mb') or t['kuota_mb'])
+    except (TypeError, ValueError):
+        quota = t['kuota_mb']
+    codes = []
+    for _ in range(count):
+        code = db.create_license(tier, quota_mb=quota, duration_days=t['durasi_hari'],
+                                 created_by=uid(), note=(data.get('note') or '')[:100])
+        if code:
+            codes.append(code)
+    db.log_activity('license_create', uid(), detail='Buat %d lisensi %s' % (len(codes), tier))
+    return jsonify({'ok': True, 'codes': codes})
+
+
+@app.route('/api/admin/licenses/<int:lid>/revoke', methods=['POST'])
+@admin_required
+def api_admin_license_revoke(lid):
+    data = request.get_json(force=True, silent=True) or {}
+    revoked = bool(data.get('revoked', True))
+    db.set_license_status(lid, 'revoked' if revoked else 'active')
+    return jsonify({'ok': True})
+
+
+@app.route('/api/admin/licenses/<int:lid>', methods=['DELETE'])
+@admin_required
+def api_admin_license_delete(lid):
+    db.delete_license(lid)
+    return jsonify({'ok': True})
 
 
 @app.route('/api/admin/invites/<int:cid>', methods=['DELETE'])
@@ -1363,6 +1531,18 @@ def api_admin_settings():
         db.set_setting('direct_url', _norm_public_url(data['direct_url'], 'http://')[:200])
     if 'domain_url' in data:
         db.set_setting('domain_url', _norm_public_url(data['domain_url'], 'https://')[:200])
+    if 'handoff_token_ttl' in data:
+        try:
+            ttl = int(data['handoff_token_ttl'])
+        except (TypeError, ValueError):
+            ttl = 90
+        db.set_setting('handoff_token_ttl', str(max(10, min(600, ttl))))
+    for pk in ('license_price_monthly', 'license_price_yearly', 'license_price_lifetime'):
+        if pk in data:
+            db.set_setting(pk, (data[pk] or '').strip()[:32])
+    if 'wa_number' in data:
+        wa = re.sub(r'\D', '', data['wa_number'] or '')[:16]
+        db.set_setting('wa_number', wa)
     return jsonify({'ok': True})
 
 
