@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% set active='upgrade' %}
+{% block title %}Upgrade ke PRO — TG Drive{% endblock %}
+{% block content %}
+<h2 style="margin-bottom:6px">⭐ Upgrade ke PRO</h2>
+<p class="muted" style="margin-bottom:20px;max-width:640px">Akun gratis sudah cukup untuk pakai sehari-hari. Lisensi PRO untuk kamu yang butuh <b>lebih cepat</b>, <b>file lebih besar</b>, dan <b>ruang lebih lega</b>.</p>
+
+{% if my_license %}
+<div class="card" style="max-width:640px;border-color:#7ddf9a">
+  <h3 style="color:#7ddf9a">✅ Kamu sudah PRO</h3>
+  <p style="font-size:.92rem">Paket: <b>{{ my_license.tier }}</b><br>
+  Berlaku sampai: <b>{{ my_license.expires_at[:10] if my_license.expires_at else 'selamanya' }}</b></p>
+</div>
+{% endif %}
+
+<h3 style="margin:22px 0 10px">Apa untungnya beli lisensi?</h3>
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;max-width:800px">
+  <div class="card"><b>⚡ Max Speed</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Upload lewat <b>jalur langsung</b> — tidak kena batas ±100&nbsp;MB, jauh lebih cepat untuk file besar.</p></div>
+  <div class="card"><b>📦 File sampai 2 GB</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Akun gratis dibatasi ±100&nbsp;MB per file. PRO bisa upload file besar sekaligus, mis. video &amp; backup.</p></div>
+  <div class="card"><b>💾 Kuota lebih besar</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Ruang penyimpanan naik otomatis saat lisensi diaktifkan. Makin tinggi paket, makin lega.</p></div>
+  <div class="card"><b>🔄 Pindah otomatis</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Tanpa login ulang saat pindah antara domain dan jalur langsung. Sekali klik, langsung jalan.</p></div>
+</div>
+
+<h3 style="margin:26px 0 10px">Pilih paket</h3>
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-width:800px">
+{% for t in tiers %}
+  <div class="card" style="text-align:center">
+    <b style="font-size:1.05rem">{{ t.nama }}</b>
+    <p class="muted" style="font-size:.85rem;margin:6px 0">{{ t.durasi_hari ~ ' hari' if t.durasi_hari else 'sekali bayar' }}</p>
+    <div style="font-size:1.4rem;font-weight:700;margin:8px 0">{% if t.harga %}Rp {{ t.harga }}{% else %}<span class="muted" style="font-size:.9rem">Hubungi admin</span>{% endif %}</div>
+    <p class="muted" style="font-size:.82rem">Kuota {{ (t.kuota_mb/1024)|round|int }} GB &bull; file s/d {{ (t.max_upload_mb/1024)|round|int }} GB &bull; ⚡ Max Speed</p>
+  </div>
+{% endfor %}
+</div>
+
+<h3 style="margin:26px 0 10px">Cara beli</h3>
+<div class="card" style="max-width:640px">
+  <ol style="font-size:.92rem;line-height:1.9;padding-left:20px;margin:0 0 14px">
+    <li><b>Scan QRIS</b> di bawah, masukkan nominal sesuai paket yang dipilih.</li>
+    <li>Klik <b>Konfirmasi via WhatsApp</b> — kirim bukti bayar + username kamu.</li>
+    <li>Admin mengirim <b>kode lisensi</b> via WhatsApp.</li>
+    <li>Masukkan kode di kolom <b>Redeem</b> bawah → PRO langsung aktif.</li>
+  </ol>
+  <div style="text-align:center;margin:10px 0">
+    <img src="{{ qris_url }}" alt="QRIS pembayaran" style="max-width:260px;width:100%;border-radius:10px;border:1px solid var(--line)">
+    <p class="muted" style="font-size:.82rem;margin-top:6px">QRIS a.n. GTG OFFICIAL — masukkan nominal manual sesuai harga paket</p>
+  </div>
+  {% if wa_number or telegram_username %}
+  <div style="text-align:center;margin-top:10px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    {% if wa_number %}
+    <a class="btn primary" target="_blank" rel="noopener" id="waBtn" href="#">💬 Konfirmasi via WhatsApp</a>
+    {% endif %}
+    {% if telegram_username %}
+    <a class="btn" target="_blank" rel="noopener" id="tgBtn" href="https://t.me/{{ telegram_username }}">✈️ Konfirmasi via Telegram</a>
+    {% endif %}
+  </div>
+  <p class="muted" id="cpMsg" style="font-size:.8rem;margin-top:8px;display:none">Pesan konfirmasi disalin — tinggal tempel (paste) di chat Telegram.</p>
+  {% else %}
+  <p class="muted" style="font-size:.88rem">Setelah bayar, hubungi admin untuk konfirmasi.</p>
+  {% endif %}
+</div>
+
+<h3 style="margin:26px 0 10px">Redeem kode lisensi</h3>
+<div class="card" style="max-width:640px">
+  <div class="row" style="display:flex;gap:8px">
+    <input id="licCode" placeholder="TGDRIVE-XXXX-XXXX" style="flex:1;text-transform:uppercase">
+    <button class="btn primary" onclick="redeem()">Aktifkan</button>
+  </div>
+  <div id="licMsg" style="font-size:.88rem;margin-top:8px"></div>
+</div>
+
+<script>
+(function(){
+  const msg='Halo admin, saya sudah bayar lisensi TG Drive.\nUsername: {{ session.get("username","") }}\nPaket: \nNominal: Rp ';
+  {% if wa_number %}
+  document.getElementById('waBtn').href='https://wa.me/{{ wa_number }}?text='+encodeURIComponent(msg);
+  {% endif %}
+  {% if telegram_username %}
+  const tg=document.getElementById('tgBtn');
+  if(tg)tg.addEventListener('click',()=>{
+    // Telegram tidak mendukung prefill pesan via link — salin dulu biar user tinggal paste
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(msg).then(()=>{document.getElementById('cpMsg').style.display='';}).catch(()=>{});
+      }
+    }catch(e){}
+  });
+  {% endif %}
+})();
+async function redeem(){
+  const code=document.getElementById('licCode').value.trim();
+  const msg=document.getElementById('licMsg');
+  if(!code){msg.textContent='Masukkan kode dulu.';msg.style.color='var(--danger)';return;}
+  msg.textContent='Memproses…';msg.style.color='';
+  try{
+    const r=await fetch('/api/license/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||r.status);
+    msg.style.color='#7ddf9a';
+    msg.textContent='🎉 '+d.message+' ('+d.nama+(d.expires_at?', berlaku s/d '+d.expires_at.slice(0,10):', selamanya')+')';
+    setTimeout(()=>location.reload(),1500);
+  }catch(e){msg.style.color='var(--danger)';msg.textContent='Gagal: '+e.message;}
+}
+</script>
+{% endblock %}
