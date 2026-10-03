@@ -248,9 +248,12 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 /* ikon nav */
 .topbar nav a{display:flex;align-items:center;gap:7px}
 .topbar nav a svg{width:15px;height:15px}
-/* badge PRO di topbar */
-.topbar nav a.probadge{background:linear-gradient(135deg,rgba(255,215,0,.16),rgba(255,180,0,.08));color:#c99a3f;border:1px solid rgba(255,200,60,.45);font-weight:700;letter-spacing:.4px}
-[data-theme="gelap"] .topbar nav a.probadge{color:#ffd98a}
+/* badge PRO di topbar — gradient emas premium + kilau */
+.top-pro{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:800;letter-spacing:.08em;color:#231603;background:linear-gradient(135deg,#ffe9b0 0%,#f5b942 45%,#e8930c 100%);padding:7px 13px;border-radius:20px;white-space:nowrap;box-shadow:0 2px 14px rgba(245,185,66,.4),inset 0 1px 0 rgba(255,255,255,.5);position:relative;overflow:hidden;text-decoration:none}
+.top-pro::after{content:'';position:absolute;top:0;left:-60%;width:40%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-20deg);animation:proshine 3s ease-in-out infinite;pointer-events:none}
+@keyframes proshine{0%,60%{left:-60%}100%{left:130%}}
+.top-pro svg{width:13px;height:13px}
+[data-theme="gelap"] .top-pro{box-shadow:0 2px 16px rgba(245,185,66,.5),inset 0 1px 0 rgba(255,255,255,.5)}
 /* toast undo */
 .utoast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:80;display:flex;gap:12px;align-items:center;
   background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 16px;font-size:.88rem;
