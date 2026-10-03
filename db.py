@@ -131,6 +131,35 @@ CREATE TABLE IF NOT EXISTS login_tokens (
     used INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_login_tokens_hash ON login_tokens(token_hash);
+-- Sesi upload chunked/resume: satu baris per file yang sedang diupload per potong.
+CREATE TABLE IF NOT EXISTS upload_sessions (
+    id TEXT PRIMARY KEY,            -- upload_id (uuid hex)
+    user_id INTEGER NOT NULL,
+    file_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    chunk_size INTEGER NOT NULL,
+    total_chunks INTEGER NOT NULL,
+    received TEXT NOT NULL DEFAULT '[]',  -- JSON array nomor chunk yang sudah masuk
+    tmp_path TEXT NOT NULL,
+    folder_id INTEGER,
+    overwrite_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'active', -- active|done|cancelled
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_upload_sessions_user ON upload_sessions(user_id, status);
+-- Token transfer sekali-pakai/terbatas: upload & download lintas origin (domain -> direct).
+CREATE TABLE IF NOT EXISTS transfer_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    purpose TEXT NOT NULL,          -- 'upload' | 'download'
+    ref_id TEXT,                    -- upload_id (upload) / file_id (download)
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_transfer_tokens_hash ON transfer_tokens(token_hash);
 CREATE TABLE IF NOT EXISTS licenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
@@ -1120,3 +1149,133 @@ def set_user_setting(user_id, key, value):
                  (user_id, key, value))
     conn.commit()
     conn.close()
+
+
+# ---------- upload chunked / resume ----------
+
+def create_upload_session(sid, user_id, file_name, file_size, chunk_size, total_chunks,
+                           tmp_path, folder_id=None, overwrite_id=None, ttl_hours=24):
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    exp = (datetime.now(timezone.utc) + timedelta(hours=ttl_hours)).isoformat()
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO upload_sessions (id, user_id, file_name, file_size, chunk_size,'
+        ' total_chunks, received, tmp_path, folder_id, overwrite_id, status,'
+        ' created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?)',
+        (sid, user_id, file_name, file_size, chunk_size, total_chunks, '[]',
+         tmp_path, folder_id, overwrite_id, 'active', now, exp))
+    conn.commit()
+    conn.close()
+
+
+def get_upload_session(sid, user_id=None):
+    conn = get_db()
+    if user_id is None:
+        r = conn.execute('SELECT * FROM upload_sessions WHERE id=?', (sid,)).fetchone()
+    else:
+        r = conn.execute('SELECT * FROM upload_sessions WHERE id=? AND user_id=?',
+                         (sid, user_id)).fetchone()
+    conn.close()
+    return dict(r) if r else None
+
+
+def add_upload_chunk(sid, idx):
+    """Catat satu chunk masuk. Kembalikan jumlah chunk yang sudah diterima."""
+    import json as _json
+    conn = get_db()
+    r = conn.execute('SELECT received FROM upload_sessions WHERE id=?', (sid,)).fetchone()
+    if not r:
+        conn.close()
+        return 0
+    try:
+        rec = set(_json.loads(r['received'] or '[]'))
+    except Exception:
+        rec = set()
+    rec.add(int(idx))
+    conn.execute('UPDATE upload_sessions SET received=? WHERE id=?',
+                 (_json.dumps(sorted(rec)), sid))
+    conn.commit()
+    conn.close()
+    return len(rec)
+
+
+def set_upload_session_status(sid, status):
+    conn = get_db()
+    conn.execute('UPDATE upload_sessions SET status=? WHERE id=?', (status, sid))
+    conn.commit()
+    conn.close()
+
+
+def delete_upload_session(sid):
+    conn = get_db()
+    conn.execute('DELETE FROM upload_sessions WHERE id=?', (sid,))
+    conn.commit()
+    conn.close()
+
+
+def list_active_upload_sessions(user_id):
+    conn = get_db()
+    rs = conn.execute("SELECT * FROM upload_sessions WHERE user_id=? AND status='active'"
+                      ' ORDER BY created_at DESC', (user_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rs]
+
+
+def cleanup_upload_sessions():
+    """Hapus sesi kedaluwarsa + file sementara yatim. Kembalikan jumlah dibersihkan."""
+    import json as _json, os as _os
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db()
+    olds = conn.execute('SELECT id, tmp_path FROM upload_sessions'
+                        " WHERE expires_at<? AND status='active'", (now,)).fetchall()
+    n = 0
+    for o in olds:
+        try:
+            if o['tmp_path'] and _os.path.exists(o['tmp_path']):
+                _os.remove(o['tmp_path'])
+        except OSError:
+            pass
+        conn.execute("UPDATE upload_sessions SET status='cancelled' WHERE id=?", (o['id'],))
+        n += 1
+    conn.commit()
+    conn.close()
+    return n
+
+
+# ---------- token transfer (upload/download lintas origin) ----------
+
+def create_transfer_token(token_hash, user_id, purpose, ref_id=None, ttl_seconds=900):
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO transfer_tokens (token_hash, user_id, purpose, ref_id,'
+        ' created_at, expires_at, used) VALUES (?,?,?,?,?,?,0)',
+        (token_hash, user_id, purpose, ref_id, now.isoformat(),
+         (now + timedelta(seconds=ttl_seconds)).isoformat()))
+    conn.commit()
+    conn.close()
+
+
+def consume_transfer_token(token_hash, purpose, single_use=True):
+    """Validasi token; kembalikan dict token atau None. single_use=mencatat used=1."""
+    from datetime import datetime, timezone
+    conn = get_db()
+    r = conn.execute('SELECT * FROM transfer_tokens WHERE token_hash=? AND purpose=?',
+                     (token_hash, purpose)).fetchone()
+    if not r:
+        conn.close()
+        return None
+    t = dict(r)
+    now = datetime.now(timezone.utc).isoformat()
+    if t['expires_at'] < now or (single_use and t['used']):
+        conn.close()
+        return None
+    if single_use:
+        conn.execute('UPDATE transfer_tokens SET used=1 WHERE id=?', (t['id'],))
+        conn.commit()
+    conn.close()
+    return t
