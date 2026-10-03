@@ -396,7 +396,7 @@ function initDrive(){
     }
     html+=files.map((f,i)=>{
       const thumb=f.kind==='photo'||f.kind==='video'
-        ?'<img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.parentNode.innerHTML='+(f.kind==='video'?'<span class="mi mi-movie"></span>':'<span class="mi mi-image"></span>')+'">'
+        ?'<img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.parentNode.innerHTML='+(f.kind==='video'?'\'<span class=&quot;mi mi-movie&quot;></span>\'':'\'<span class=&quot;mi mi-image&quot;></span>\'')+'">'
         :'<div>'+(f.kind==='audio'?'<span class="mi mi-music-note"></span>':/\.md$/i.test(f.name)?'<span class="mi mi-edit-note"></span>':'<span class="mi mi-description"></span>')+'</div>';
       return '<div class="fitem" data-i="'+i+'"><div class="chk"><span class="mi mi-check"></span></div><div class="thumb">'+thumb+'</div><div class="meta"><div class="nm" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' • '+fmtDate(f.uploaded_at)+(S.trash?'<br><span class="trashcount">'+trashCountdown(f.trashed_at)+'</span>':'')+'</div></div>'+
         '<div class="acts"><button class="kebab" title="Menu"><span class="mi mi-more-vert"></span></button></div></div>';
