@@ -115,6 +115,21 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
 - Tombol **☑ Pilih dihapus** dari toolbar; mode pilih via tahan lama (HP) atau **⋯ → Pilih banyak** (desktop).
 - Menu ⋯ berisi: Pilih banyak, Tong Sampah.
 
+## Tanggal foto dari nama file (2026-10-03)
+
+- `taken_at` kini diisi berlapis: EXIF (`DateTimeOriginal` → `CreateDate` →
+  `DateTime`) dulu, lalu **nama file** bila EXIF kosong.
+- Pola nama yang dikenali: `IMG_YYYYMMDD_HHMMSS`, `IMG-YYYYMMDD-WAxxxx`
+  (WhatsApp), `VID_…`, `PXL_…`, `Screenshot_YYYY-MM-DD-HH-MM-SS`,
+  tanggal `YYYY-MM-DD`, timestamp murni 10/13 digit. Tanggal tidak masuk akal
+  (<1990 / masa depan) ditolak.
+- Berlaku untuk foto DAN video (`photo_taken_at` di `_process_upload_file`).
+- Backfill sekali jalan: `python3 /tmp/backfill_taken.py` di VPS mengisi
+  `taken_at` yang masih NULL dari nama file (680 dari 701 foto pada
+  2026-10-03; sisanya nama acak tanpa tanggal → tetap pakai tanggal upload).
+- Scrubber timeline Foto otomatis muncul karena foto kini tersebar di
+  banyak grup bulan.
+
 ## Upload 2-mode (2026-10-03)
 
 - **Mode 1** (<100 MB): single POST biasa via domain — perilaku lama, stabil.
