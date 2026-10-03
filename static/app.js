@@ -511,8 +511,6 @@ function initDrive(){
     if(bar){bar.classList.toggle('hidden',!sel.mode);
       const c=document.getElementById('selCount');if(c)c.textContent=n+' dipilih'}
     if(ab)ab.classList.toggle('on',sel.mode&&n>0);
-    const sm=document.getElementById('selModeBtn');
-    if(sm)sm.textContent=sel.mode?'✕ Batal':'☑ Pilih';
     grid.classList.toggle('selecting',sel.mode);
     grid.querySelectorAll('.fitem').forEach(el=>{
       const fid=el.dataset.fid;
@@ -989,8 +987,9 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   document.getElementById('navBack').onclick=navBack;
   document.getElementById('navFwd').onclick=navFwd;
   document.getElementById('navUp').onclick=navUp;
-  /* mode pilih banyak */
-  document.getElementById('selModeBtn').onclick=()=>sel.mode?exitSelMode():enterSelMode();
+  /* mode pilih banyak — via tahan lama (HP) atau ⋯ → Pilih banyak (desktop) */
+  const ovSel=document.getElementById('ovSelBtn');
+  if(ovSel)ovSel.onclick=()=>sel.mode?exitSelMode():enterSelMode();
   document.getElementById('selCancelBtn').onclick=exitSelMode;
   document.getElementById('selAllBtn').onclick=()=>{
     sel.files=new Set(selItems.map(f=>f.id));
