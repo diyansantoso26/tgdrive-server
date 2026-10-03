@@ -81,7 +81,8 @@ python3 -c "... workflow_dispatch ..."
 
 ```bash
 sudo systemctl status tgdrive        # status service
-sudo systemctl restart tgdrive       # restart
+sudo systemctl reload tgdrive        # reload graceful (tanpa putus koneksi) — untuk update kode
+sudo systemctl restart tgdrive       # restart penuh — hanya bila .env berubah / reload bermasalah
 sudo journalctl -u tgdrive -f        # log
 sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
 ```
