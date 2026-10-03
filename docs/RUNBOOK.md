@@ -130,6 +130,17 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
 - Scrubber timeline Foto otomatis muncul karena foto kini tersebar di
   banyak grup bulan.
 
+## Foto full viewport + fix PIN user (2026-10-03)
+
+- Tab Foto kini **viewport terkunci**: halaman tidak bisa di-scroll
+  (`body.page-photos{overflow:hidden}`), scrollbar browser disembunyikan;
+  hanya area `#tlWrap` yang scroll internal (scrollbar-nya juga
+  disembunyikan). Scrubber jadi navigasi utama (geser = lompat antar
+  grup bulan; scroll area = kenop ikut). Header bulan sticky `top:0`.
+- Fix bug: tombol **Simpan PIN tidak berfungsi untuk user non-admin** —
+  `initSettings()` crash di `getElementById('lApply')` (tombol khusus
+  admin) sehingga handler PIN tidak pernah tersambung. Kini di-guard.
+
 ## Upload 2-mode (2026-10-03)
 
 - **Mode 1** (<100 MB): single POST biasa via domain — perilaku lama, stabil.
