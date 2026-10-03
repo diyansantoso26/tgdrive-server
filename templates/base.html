@@ -15,6 +15,7 @@
     <a href="{{ url_for('photos') }}" class="{% if active=='photos' %}on{% endif %}">Foto</a>
     <a href="{{ url_for('activity') }}" class="{% if active=='activity' %}on{% endif %}">Aktivitas</a>
     <a href="{{ url_for('settings') }}" class="{% if active=='settings' %}on{% endif %}">Pengaturan</a>
+    <a href="{{ url_for('upgrade_page') }}" class="{% if active=='upgrade' %}on{% endif %}">⭐ Upgrade</a>
     {% if nav_is_admin %}<a href="{{ url_for('admin_page') }}" class="{% if active=='admin' %}on{% endif %}">Admin</a>{% endif %}
   </nav>
   <span id="storageInfo" class="storage"></span>
