@@ -36,13 +36,7 @@
   </div>
 </div>
 
-<h2 style="margin:30px 0 6px">⚡ Max Speed</h2>
-<p class="muted" style="margin-bottom:18px">Jalur langsung via IP publik — tanpa batas ±100 MB Cloudflare, upload lebih cepat. Khusus pengguna PRO. IP publik diatur oleh admin.</p>
-
-<div class="login-card" id="msCard" style="text-align:left;max-width:560px">
-  <div id="msBody"><p class="muted">Memuat…</p></div>
-</div>
-
+{% if is_admin %}
 <h2 style="margin:30px 0 6px">Sumber daya server</h2>
 <p class="muted" style="margin-bottom:18px">Pemakaian live + batas pemakaian TG Drive. Menerapkan batas me-restart service otomatis (±10 detik).</p>
 
@@ -62,26 +56,38 @@
     <button class="btn primary" id="lApply">Terapkan batas & restart</button>
   </div>
 </div>
+{% endif %}
 
 <h2 style="margin:30px 0 6px">🔒 Kunci Folder</h2>
 <p class="muted" style="margin-bottom:18px">Kunci folder dengan PIN. Isi folder terkunci disembunyikan dari Drive, pencarian, dan Foto sampai dibuka dengan PIN.</p>
 
 <div class="login-card" style="text-align:left;max-width:560px">
-  <div id="pinStatus" class="muted" style="margin-bottom:12px"></div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    <span id="pinBadge" class="pill warn">…</span>
+    <span class="muted" id="pinStatus" style="font-size:.85rem"></span>
+  </div>
+  <h3 style="margin:0 0 10px;font-size:1rem" id="pinFormTitle">Atur PIN keamanan</h3>
   <div id="pinOldWrap" class="hidden">
     <label style="font-size:.85rem;color:var(--muted)">PIN lama</label>
-    <input id="pinOld" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+    <div class="pinwrap"><input id="pinOld" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="••••"><button class="eyebtn" data-for="pinOld" type="button" title="Tampilkan">👁</button></div>
   </div>
-  <label style="font-size:.85rem;color:var(--muted)">PIN baru (4–12 digit)</label>
-  <input id="pinNew" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+  <label style="font-size:.85rem;color:var(--muted)" id="pinNewLabel">PIN baru (4–12 digit angka)</label>
+  <div class="pinwrap"><input id="pinNew" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="••••"><button class="eyebtn" data-for="pinNew" type="button" title="Tampilkan">👁</button></div>
   <label style="font-size:.85rem;color:var(--muted)">Ulangi PIN baru</label>
-  <input id="pinNew2" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
-  <div id="pinMsg" style="font-size:.85rem;margin-bottom:10px"></div>
-  <div class="row" style="display:flex;gap:10px;justify-content:flex-end">
-    <button class="btn ghost" id="relockAll">Kunci ulang semua</button>
+  <div class="pinwrap"><input id="pinNew2" type="password" inputmode="numeric" maxlength="12" autocomplete="off" placeholder="••••"><button class="eyebtn" data-for="pinNew2" type="button" title="Tampilkan">👁</button></div>
+  <div id="pinMsg" style="font-size:.85rem;margin:10px 0;min-height:1.2em"></div>
+  <div class="row" style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+    <button class="btn ghost" id="relockAll">🔒 Kunci ulang semua</button>
     <button class="btn primary" id="pinSave">Simpan PIN</button>
   </div>
-  <h3 style="margin:20px 0 6px">Folder</h3>
+</div>
+
+<div class="login-card" style="text-align:left;max-width:560px;margin-top:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <h3 style="margin:0;font-size:1rem">Folder saya</h3>
+    <span class="muted" id="lockCount" style="font-size:.8rem"></span>
+  </div>
+  <p class="muted" style="font-size:.82rem;margin:0 0 8px">Kunci berlaku juga untuk subfolder di dalamnya. Membuka kunci selalu butuh PIN.</p>
   <div id="lockFolders"></div>
 </div>
 {% endblock %}
