@@ -2,12 +2,12 @@
 {% set active='upgrade' %}
 {% block title %}Upgrade ke PRO — TG Drive{% endblock %}
 {% block content %}
-<h2 style="margin-bottom:6px">⭐ Upgrade ke PRO</h2>
+<h2 style="margin-bottom:6px"><span class="mi mi-star fill"></span> Upgrade ke PRO</h2>
 <p class="muted" style="margin-bottom:20px;max-width:640px">Akun gratis sudah cukup untuk pakai sehari-hari. Lisensi PRO untuk kamu yang butuh <b>lebih cepat</b>, <b>file lebih besar</b>, dan <b>ruang lebih lega</b>.</p>
 
 {% if my_license %}
 <div class="card" style="max-width:640px;border-color:#7ddf9a">
-  <h3 style="color:#7ddf9a">✅ Kamu sudah PRO</h3>
+  <h3 style="color:#7ddf9a"><span class="mi mi-check-circle"></span> Kamu sudah PRO</h3>
   <p style="font-size:.92rem">Paket: <b>{{ my_license.tier }}</b><br>
   Berlaku sampai: <b>{{ my_license.expires_at[:10] if my_license.expires_at else 'selamanya' }}</b></p>
 </div>
@@ -15,10 +15,10 @@
 
 <h3 style="margin:22px 0 10px">Apa untungnya beli lisensi?</h3>
 <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;max-width:800px">
-  <div class="card"><b>⚡ Max Speed</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Upload lewat <b>jalur langsung</b> — tidak kena batas ±100&nbsp;MB, jauh lebih cepat untuk file besar.</p></div>
-  <div class="card"><b>📦 File sampai 2 GB</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Akun gratis dibatasi ±100&nbsp;MB per file. PRO bisa upload file besar sekaligus, mis. video &amp; backup.</p></div>
-  <div class="card"><b>💾 Kuota lebih besar</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Ruang penyimpanan naik otomatis saat lisensi diaktifkan. Makin tinggi paket, makin lega.</p></div>
-  <div class="card"><b>🔄 Pindah otomatis</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Tanpa login ulang saat pindah antara domain dan jalur langsung. Sekali klik, langsung jalan.</p></div>
+  <div class="card"><b><span class="mi mi-bolt"></span> Max Speed</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Upload lewat <b>jalur langsung</b> — tidak kena batas ±100&nbsp;MB, jauh lebih cepat untuk file besar.</p></div>
+  <div class="card"><b><span class="mi mi-inventory-2"></span> File sampai 2 GB</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Akun gratis dibatasi ±100&nbsp;MB per file. PRO bisa upload file besar sekaligus, mis. video &amp; backup.</p></div>
+  <div class="card"><b><span class="mi mi-save"></span> Kuota lebih besar</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Ruang penyimpanan naik otomatis saat lisensi diaktifkan. Makin tinggi paket, makin lega.</p></div>
+  <div class="card"><b><span class="mi mi-sync"></span> Pindah otomatis</b><p class="muted" style="font-size:.88rem;margin:6px 0 0">Tanpa login ulang saat pindah antara domain dan jalur langsung. Sekali klik, langsung jalan.</p></div>
 </div>
 
 <h3 style="margin:26px 0 10px">Pilih paket</h3>
@@ -28,7 +28,7 @@
     <b style="font-size:1.05rem">{{ t.nama }}</b>
     <p class="muted" style="font-size:.85rem;margin:6px 0">{{ t.durasi_hari ~ ' hari' if t.durasi_hari else 'sekali bayar' }}</p>
     <div style="font-size:1.4rem;font-weight:700;margin:8px 0">{% if t.harga %}Rp {{ t.harga }}{% else %}<span class="muted" style="font-size:.9rem">Hubungi admin</span>{% endif %}</div>
-    <p class="muted" style="font-size:.82rem">Kuota {{ (t.kuota_mb/1024)|round|int }} GB &bull; file s/d {{ (t.max_upload_mb/1024)|round|int }} GB &bull; ⚡ Max Speed</p>
+    <p class="muted" style="font-size:.82rem">Kuota {{ (t.kuota_mb/1024)|round|int }} GB &bull; file s/d {{ (t.max_upload_mb/1024)|round|int }} GB &bull; <span class="mi mi-bolt"></span> Max Speed</p>
   </div>
 {% endfor %}
 </div>
@@ -48,10 +48,10 @@
   {% if wa_number or telegram_username %}
   <div style="text-align:center;margin-top:10px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     {% if wa_number %}
-    <a class="btn primary" target="_blank" rel="noopener" id="waBtn" href="#">💬 Konfirmasi via WhatsApp</a>
+    <a class="btn primary" target="_blank" rel="noopener" id="waBtn" href="#"><span class="mi mi-chat"></span> Konfirmasi via WhatsApp</a>
     {% endif %}
     {% if telegram_username %}
-    <a class="btn" target="_blank" rel="noopener" id="tgBtn" href="https://t.me/{{ telegram_username }}">✈️ Konfirmasi via Telegram</a>
+    <a class="btn" target="_blank" rel="noopener" id="tgBtn" href="https://t.me/{{ telegram_username }}"><span class="mi mi-send"></span> Konfirmasi via Telegram</a>
     {% endif %}
   </div>
   <p class="muted" id="cpMsg" style="font-size:.8rem;margin-top:8px;display:none">Pesan konfirmasi disalin — tinggal tempel (paste) di chat Telegram.</p>
