@@ -393,7 +393,35 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .fpick .frow.on{background:rgba(79,140,255,.14)}
 @media(max-width:640px){.explbar{flex-wrap:wrap}.ss-grid{grid-template-columns:repeat(2,1fr)}}
 /* ===== revisi toolbar 2026-10-03: [navigasi] | [undo/redo] | [cari] | [aksi] ===== */
-.tools.toolbar2{width:100%;margin-left:0}
+/* ===== toolbar 1 baris: semua icon (mobile, tablet, desktop) ===== */
+.tools.toolbar1{display:flex;align-items:center;gap:8px;width:100%}
+.btn-new{display:flex;align-items:center;gap:8px;height:42px;padding:0 16px 0 12px;border-radius:12px;border:1px solid var(--acc);background:rgba(47,157,255,.12);color:var(--acc);font-size:.82rem;font-weight:700;cursor:pointer;flex-shrink:0}
+.btn-new:hover{background:rgba(47,157,255,.22)}
+.btn-new .plus{width:22px;height:22px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.95rem;font-weight:700;line-height:1}
+.tools.toolbar1 .crumbs{flex:1;min-width:0}
+.icobtn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:1.15rem;cursor:pointer;flex-shrink:0}
+.icobtn:hover:not(:disabled){border-color:var(--acc)}
+.icobtn:disabled{opacity:.35;cursor:default}
+.icobtn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.icobtn.ghost{background:none;border-color:transparent;color:var(--muted)}
+/* search expand */
+.searchexp{display:flex;align-items:center;gap:8px;width:100%}
+.searchexp input[type=search]{flex:1;height:42px;border-radius:12px;border:1px solid var(--acc);background:var(--bg2);color:var(--ink);padding:0 14px;font-size:.9rem;min-width:0}
+/* sort dropdown */
+#sortDrop button{display:flex;width:100%;text-align:left;background:none;border:none;padding:10px 14px;font-size:.88rem;color:var(--ink);border-radius:8px;cursor:pointer;align-items:center;gap:8px}
+#sortDrop button:hover{background:var(--bg2)}
+#sortDrop button.on{color:var(--acc);font-weight:700}
+.ovdiv{height:1px;background:var(--line);margin:5px 8px;opacity:.7}
+.crumb.upbtn{padding:6px 9px;color:var(--acc);font-weight:700}
+.accmi.disabled{opacity:.35;pointer-events:none}
+/* mobile: tombol sedikit lebih ramping */
+@media(max-width:480px){
+  .tools.toolbar1{gap:6px}
+  .btn-new{height:40px;padding:0 12px 0 10px;font-size:.78rem}
+  .btn-new .plus{width:20px;height:20px;font-size:.85rem}
+  .icobtn{width:40px;height:40px;font-size:1.05rem}
+  .tools.toolbar1 .crumbs{font-size:.74rem}
+}
 .tdiv{width:1px;height:26px;align-self:center;background:var(--line);opacity:.8;flex-shrink:0}
 .tools.toolbar2 input[type=search]{flex:1 1 140px;min-width:120px}
 @media(max-width:640px){.tools.toolbar2{gap:6px}.tools.toolbar2 select{max-width:130px}}
@@ -492,6 +520,8 @@ body.page-photos .tl-jgrid .fitem .thumb img{width:100%;height:100%;object-fit:c
 .mi-star::before{content:"\E838"}
 .mi-swap-vert::before{content:"\E0C3"}
 .mi-sync::before{content:"\E627"}
+.mi-sort::before{content:"\E164"}
+.mi-redo::before{content:"\E15A"}
 .mi-text-snippet::before{content:"\F1C6"}
 .mi-tune::before{content:"\E429"}
 .mi-undo::before{content:"\E166"}
