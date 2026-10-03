@@ -51,6 +51,20 @@ function renderLb(){const it=lbItems[lbIdx];if(!it)return;const b=document.getEl
 async function lbNav(d){if(!lbItems.length)return;lbIdx=(lbIdx+lbItems.length+d)%lbItems.length;lbSrc=await dlHref(lbItems[lbIdx]);renderLb()}
 function closeLightbox(){document.getElementById('lightbox').classList.add('hidden');document.getElementById('lbBody').innerHTML=''}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox();if(!document.getElementById('lightbox').classList.contains('hidden')){if(e.key==='ArrowRight')lbNav(1);if(e.key==='ArrowLeft')lbNav(-1)}});
+/* usap kiri/kanan untuk pindah foto di lightbox (sentuh, mis. Android) */
+let lbSx=0,lbSy=0,lbTrack=false;
+document.addEventListener('touchstart',e=>{
+  lbTrack=false;
+  if(e.touches.length!==1||document.getElementById('lightbox').classList.contains('hidden'))return;
+  if(e.target.closest('#lightbox video'))return; // jangan ganggu kontrol video
+  if(!e.target.closest('#lightbox'))return;
+  const t=e.touches[0];lbSx=t.clientX;lbSy=t.clientY;lbTrack=true;
+},{passive:true});
+document.addEventListener('touchend',e=>{
+  if(!lbTrack)return;lbTrack=false;
+  const t=e.changedTouches[0],dx=t.clientX-lbSx,dy=t.clientY-lbSy;
+  if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5)lbNav(dx<0?1:-1);
+},{passive:true});
 
 /* ---------- modal helper ---------- */
 function modal(html){const d=document.createElement('div');d.className='modal';d.innerHTML='<div class="box">'+html+'</div>';d.onclick=e=>{if(e.target===d)d.remove()};document.body.appendChild(d);return d}
