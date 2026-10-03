@@ -1076,6 +1076,65 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       }}};
   document.getElementById('trashBtn').onclick=()=>{S.trash=true;S.folder='root';renderCrumbs();load()};
 
+  /* ---------- pembersih duplikat ---------- */
+  async function dupCleaner(){
+    const m=modal('<h3><span class="mi mi-content-copy"></span> Pembersih Duplikat</h3>'
+      +'<p class="muted" style="font-size:.85rem;margin:-6px 0 12px">File dengan <b>nama & ukuran sama</b> di folder yang sama. Yang tertua dianggap asli dan dipertahankan. Dihapus = masuk Tong Sampah (bisa dikembalikan 7 hari).</p>'
+      +'<div id="dupBody"><p class="muted">Memindai…</p></div>'
+      +'<div class="row" style="margin-top:12px"><span class="muted" id="dupSelInfo" style="font-size:.85rem;margin-right:auto"></span>'
+      +'<button class="btn" id="dupClose">Tutup</button>'
+      +'<button class="btn danger" id="dupDel" style="display:none">Pindahkan ke Tong Sampah</button></div>');
+    m.querySelector('.box').classList.add('wide');
+    const body=m.querySelector('#dupBody');
+    m.querySelector('#dupClose').onclick=()=>m.remove();
+    async function scan(){
+      body.innerHTML='<p class="muted">Memindai…</p>';
+      m.querySelector('#dupDel').style.display='none';
+      m.querySelector('#dupSelInfo').textContent='';
+      let groups;
+      try{groups=(await api('/api/duplicates')).groups||[]}
+      catch(e){body.innerHTML='<p class="err">Gagal memindai: '+esc(e.message)+'</p>';return}
+      if(!groups.length){body.innerHTML='<p class="ok" style="text-align:center;padding:20px">🎉 Tidak ada duplikat.<br><span class="muted">Drive-mu bersih!</span></p>';return}
+      body.innerHTML='<p class="muted" style="font-size:.82rem;margin-bottom:10px">'+groups.length+' grup duplikat ditemukan.</p>'+groups.map((g,gi)=>{
+        const rows=g.files.map((f,fi)=>{
+          const keep=fi===0;
+          return '<label class="duprow'+(keep?' keep':'')+'">'
+            +'<input type="checkbox" data-gi="'+gi+'" data-fi="'+fi+'"'+(keep?'':' checked')+'>'
+            +'<img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()" alt="">'
+            +'<span class="dupmeta"><b>'+esc(f.name)+'</b><small>'+esc(fmtDate(f.uploaded_at))
+            +(keep?' • <span class="keepTag">asli — pertahankan</span>':'')+'</small></span></label>';
+        }).join('');
+        return '<div class="dupgroup"><div class="duphead"><b>'+esc(g.name)+'</b>'
+          +'<span class="dupcount">'+g.files.length+' file • '+esc(fmtSize(g.size))+'</span>'
+          +(g.folder_name?'<small class="muted">di '+esc(g.folder_name)+'</small>':'<small class="muted">di Drive Saya</small>')
+          +'</div>'+rows+'</div>';
+      }).join('');
+      const delBtn=m.querySelector('#dupDel'),info=m.querySelector('#dupSelInfo');
+      const upd=()=>{
+        const n=body.querySelectorAll('input[type=checkbox]:checked').length;
+        info.textContent=n?n+' dipilih':'';
+        delBtn.style.display=n?'':'none';
+      };
+      body.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=upd);upd();
+      delBtn.onclick=async()=>{
+        const ids=[...body.querySelectorAll('input[type=checkbox]:checked')].map(c=>{
+          const g=groups[+c.dataset.gi];return g.files[+c.dataset.fi].id;
+        });
+        if(!ids.length)return;
+        if(!await confirmDlg({ico:'🗑',title:'Hapus '+ids.length+' duplikat?',
+          msg:'Dipindah ke Tong Sampah. Bisa dikembalikan dalam 7 hari.',yes:'Ya, hapus',danger:true}))return;
+        try{
+          await api('/api/files/bulk-trash',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({file_ids:ids,folder_ids:[]})});
+          notify(ids.length+' duplikat dipindah ke Tong Sampah.','ok');
+          loadFolders();load();scan();
+        }catch(e){notify('Gagal: '+e.message,'err')}
+      };
+    }
+    scan();
+  }
+  document.getElementById('dupBtn').onclick=dupCleaner;
+
   document.addEventListener('click',e=>{if(!e.target.closest('#ctxmenu'))hideCtxMenu()});
   loadFolders().then(()=>{load();loadStorage()});
   checkPendingUploads(); // tampilkan upload chunked yang belum selesai (resume)
