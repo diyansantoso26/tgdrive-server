@@ -8,9 +8,9 @@
   </div>
   <div class="tools toolbar2">
     <div class="explnav">
-      <button id="navBack" title="Kembali">←</button>
-      <button id="navFwd" title="Maju">→</button>
-      <button id="navUp" title="Naik ke folder induk">↑</button>
+      <button id="navBack" title="Kembali"><span class="mi mi-arrow-back"></span></button>
+      <button id="navFwd" title="Maju"><span class="mi mi-arrow-forward"></span></button>
+      <button id="navUp" title="Naik ke folder induk"><span class="mi mi-arrow-upward"></span></button>
     </div>
     <span class="tdiv"></span>
     <button class="btn ghost tbtn" id="undoBtn" title="Urungkan (Ctrl+Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
@@ -25,24 +25,24 @@
       <option value="size-desc">Terbesar</option>
       <option value="size-asc">Terkecil</option>
     </select>
-    <button class="btn ghost" id="viewToggle" title="Ganti tampilan">▦</button>
+    <button class="btn ghost" id="viewToggle" title="Ganti tampilan"><span class="mi mi-grid-view"></span></button>
     <div class="dpwrap">
       <button class="btn ghost" id="newBtn">＋ Baru</button>
       <div class="dpdrop hidden" id="newDrop">
-        <button id="newTxt"><span class="ic">📄</span><span>File teks<small>.txt — catatan polos</small></span></button>
-        <button id="newMd"><span class="ic">📝</span><span>Markdown<small>.md — dengan pratinjau</small></span></button>
-        <button id="newFolderBtn"><span class="ic">📁</span><span>Folder baru</span></button>
+        <button id="newTxt"><span class="ic"><span class="mi mi-description"></span></span><span>File teks<small>.txt — catatan polos</small></span></button>
+        <button id="newMd"><span class="ic"><span class="mi mi-edit-note"></span></span><span>Markdown<small>.md — dengan pratinjau</small></span></button>
+        <button id="newFolderBtn"><span class="ic"><span class="mi mi-folder"></span></span><span>Folder baru</span></button>
       </div>
     </div>
     <div class="dpwrap">
-      <button class="btn primary" id="upBtn">⬆ Upload</button>
+      <button class="btn primary" id="upBtn"><span class="mi mi-upload"></span> Upload</button>
       <div class="dpdrop hidden" id="upDrop">
-        <button id="upFileBtn"><span class="ic">📄</span><span>Upload file<small>Pilih satu/lebih file</small></span></button>
-        <button id="upFolderBtn"><span class="ic">📁</span><span>Upload folder<small>Sertakan struktur folder</small></span></button>
+        <button id="upFileBtn"><span class="ic"><span class="mi mi-description"></span></span><span>Upload file<small>Pilih satu/lebih file</small></span></button>
+        <button id="upFolderBtn"><span class="ic"><span class="mi mi-folder"></span></span><span>Upload folder<small>Sertakan struktur folder</small></span></button>
       </div>
     </div>
     <div class="ovwrap">
-      <button class="btn ghost" id="ovBtn" title="Menu lainnya">⋯</button>
+      <button class="btn ghost" id="ovBtn" title="Menu lainnya"><span class="mi mi-more-horiz"></span></button>
       <div class="ovdrop hidden" id="ovDrop">
         <a class="accmi" id="ovSelBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8.5 12.5 2.5 2.5 5-5.5"/></svg>Pilih banyak</a>
         <a class="accmi" id="trashBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Tong Sampah</a>
@@ -54,9 +54,9 @@
 </div>
 <div class="storagestrip sstrip" id="sstrip">
   <button class="ss-head" id="ssHead" title="Ketuk untuk buka/tutup rincian">
-    <span>💾</span><span id="stText">Memuat…</span>
+    <span class="mi mi-save"></span><span id="stText">Memuat…</span>
     <span class="qbar mini"><i id="stBar" style="width:0%"></i></span>
-    <span class="chev">▾</span>
+    <span class="chev"><span class="mi mi-expand-more"></span></span>
   </button>
   <div class="ss-body">
     <div class="ss-grid">
@@ -69,7 +69,7 @@
   </div>
 </div>
 <div id="trashBar" class="trashbar hidden" style="margin-bottom:12px"></div>
-<div id="selBar" class="selbar hidden"><span id="selCount">0 dipilih</span><span class="spacer"></span><button id="selAllBtn">Pilih semua</button><button id="selCancelBtn">✕ Batal</button></div>
+<div id="selBar" class="selbar hidden"><span id="selCount">0 dipilih</span><span class="spacer"></span><button id="selAllBtn">Pilih semua</button><button id="selCancelBtn"><span class="mi mi-close"></span> Batal</button></div>
 
 <div id="dropHint" class="drophint hidden">Lepaskan file / folder untuk mengupload</div>
 <div id="queue" class="queue hidden"></div>
@@ -78,9 +78,9 @@
 <div id="grid" class="grid"></div>
 <div id="emptyState" class="empty hidden">Belum ada file di sini.<br>Upload file pertama dengan drag &amp; drop atau tombol Upload.</div>
 <div id="selActionBar" class="actionbar">
-  <button class="btn" id="bulkMoveBtn">📂 Pindah</button>
-  <button class="btn" id="bulkDlBtn">⬇ Unduh</button>
-  <button class="btn danger" id="bulkDelBtn">🗑 Hapus</button>
+  <button class="btn" id="bulkMoveBtn"><span class="mi mi-folder-open"></span> Pindah</button>
+  <button class="btn" id="bulkDlBtn"><span class="mi mi-download"></span> Unduh</button>
+  <button class="btn danger" id="bulkDelBtn"><span class="mi mi-delete"></span> Hapus</button>
 </div>
 {% endblock %}
 {% block scripts %}
