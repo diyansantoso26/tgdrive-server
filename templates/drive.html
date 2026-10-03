@@ -106,7 +106,6 @@ initDrive();
       d.classList.toggle('hidden')});
   });
   document.addEventListener('click',e=>{if(!e.target.closest('.dpwrap'))document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'))});
-  document.getElementById('upFileBtn').onclick=()=>{document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));document.getElementById('fileInput').click()};
   document.getElementById('upFolderBtn').onclick=()=>{document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));document.getElementById('folderInput').click()};
 })();
 </script>
