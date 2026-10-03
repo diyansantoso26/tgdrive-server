@@ -1364,6 +1364,7 @@ def upgrade_page():
     return render_template('upgrade.html', tiers=_tier_info(),
                            my_license=lic,
                            wa_number=(db.get_setting('wa_number', '') or '').strip(),
+                           telegram_username=(db.get_setting('telegram_username', '') or '').strip(),
                            qris_url=url_for('static', filename='qris.jpg'),
                            is_pro=is_pro(), is_admin=is_admin())
 
@@ -1486,6 +1487,7 @@ def api_admin_invites():
                     'domain_url': db.get_setting('domain_url', 'https://drive.gtg.my.id'),
                     'handoff_token_ttl': int(db.get_setting('handoff_token_ttl', 90) or 90),
                     'wa_number': db.get_setting('wa_number', '') or '',
+                    'telegram_username': db.get_setting('telegram_username', '') or '',
                     'prices': {k: db.get_setting(k, '') or '' for k in
                                ('license_price_monthly', 'license_price_yearly', 'license_price_lifetime')}})
 
@@ -1594,6 +1596,9 @@ def api_admin_settings():
     if 'wa_number' in data:
         wa = re.sub(r'\D', '', data['wa_number'] or '')[:16]
         db.set_setting('wa_number', wa)
+    if 'telegram_username' in data:
+        tu = re.sub(r'[^A-Za-z0-9_]', '', data['telegram_username'] or '')[:32]
+        db.set_setting('telegram_username', tu)
     return jsonify({'ok': True})
 
 
