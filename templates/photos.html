@@ -12,7 +12,8 @@
       <option value="size-asc">Ukuran terkecil</option>
       <option value="name-asc">Nama A–Z</option>
     </select>
-    <button class="btn ghost" id="favToggle">★ Favorit</button>
+    <button class="btn ghost" id="pselModeBtn" title="Pilih banyak">☑ Pilih</button>
+    <button class="btn ghost" id="labManageBtn" title="Kelola label">🏷 Kelola</button>
     <div class="seg" id="pview">
       <button data-v="grid" class="on" title="Grid nyaman">▦</button>
       <button data-v="compact" title="Grid rapat">▤</button>
@@ -20,9 +21,20 @@
     </div>
   </div>
 </div>
+<div class="lchips" id="lchips"></div>
+<div id="selBar" class="selbar hidden"><span id="pselCount">0 dipilih</span><span class="spacer"></span><button id="pselAllBtn">Pilih semua</button><button id="pselCancelBtn">✕ Batal</button></div>
 <div id="lockNote" class="locknote hidden"></div>
-<div id="timeline"></div>
+<div class="tl-wrap" id="tlWrap">
+  <div id="timeline"></div>
+  <div class="scrub hidden" id="scrub"><div class="rail"></div><div class="knob" id="scrubKnob"></div><div class="bub" id="scrubBub"></div></div>
+</div>
 <div id="emptyState" class="empty hidden">Belum ada foto atau video.<br>Upload lewat halaman Drive.</div>
+<div id="pselActionBar" class="actionbar">
+  <button class="btn" id="pLabBtn">🏷 Label</button>
+  <button class="btn" id="pFavBtn">★ Favorit</button>
+  <button class="btn" id="pDlBtn">⬇ Unduh</button>
+  <button class="btn danger" id="pDelBtn">🗑 Hapus</button>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>initPhotos();</script>
