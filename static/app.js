@@ -680,6 +680,8 @@ function initDrive(){
   }
   /* ---------- panel upload ala TeraCopy ---------- */
   const upCtxs=new Set();
+  /* flag minimize: panel tidak boleh muncul sendiri kecuali diklik tombol mengambang */
+  let upMinimized=false;
   /* hitungan progres batch: X dari Y file selesai */
   let upDoneCount=0, upTotalCount=0;
   function upBumpDone(){upDoneCount++;upTick()}
@@ -709,11 +711,12 @@ function initDrive(){
       upCtxs.forEach(c=>{c.cancelled=true;if(c._resume)c._resume()});
     };
     document.getElementById('upMin').onclick=()=>{
+      upMinimized=true;
       document.getElementById('queue').classList.add('hidden');liveRefresh();
     };
   }
   function upReg(ctx){upEnsureHead();upCtxs.add(ctx);
-    const q=document.getElementById('queue');if(q)q.classList.remove('hidden');upTick()}
+    const q=document.getElementById('queue');if(q&&!upMinimized)q.classList.remove('hidden');upTick()}
   function upUnreg(ctx){upCtxs.delete(ctx);upTick()}
   function upTick(){
     const q=document.getElementById('queue');if(!q)return;
@@ -744,7 +747,7 @@ function initDrive(){
   }
   setInterval(upTick,1000);
   const _uf=document.getElementById('upFloat');
-  if(_uf)_uf.onclick=()=>{const q=document.getElementById('queue');if(q){q.classList.remove('hidden');q.scrollIntoView({behavior:'smooth',block:'start'})}};
+  if(_uf)_uf.onclick=()=>{upMinimized=false;const q=document.getElementById('queue');if(q){q.classList.remove('hidden');q.scrollIntoView({behavior:'smooth',block:'start'})}};
 
   /* upload */
   const fi=document.getElementById('fileInput'),queue=document.getElementById('queue'),hint=document.getElementById('dropHint');
@@ -780,7 +783,7 @@ function initDrive(){
     }
   }
   async function uploadDropEntries(entries){
-    queue.classList.remove('hidden');
+    upMinimized=false;queue.classList.remove('hidden');
     const scan=qitem('Memindai folder…','membaca struktur…');
     const files=[],emptyDirs=[];
     try{
@@ -813,7 +816,7 @@ function initDrive(){
   /* upload daftar file ber-relPath: [{file, rel:'A/b/c.jpg'}] */
   async function uploadRelFiles(items,emptyDirs){
     emptyDirs=emptyDirs||[];
-    queue.classList.remove('hidden');
+    upMinimized=false;queue.classList.remove('hidden');
     const baseParent=S.folder!=='root'?+S.folder:null;
     const prep=emptyDirs.length?qitem('Menyiapkan '+emptyDirs.length+' folder…',''):null;
     try{
@@ -862,7 +865,7 @@ function initDrive(){
 
   /* antrean upload: cek duplikat dulu, lalu kirim maks 3 paralel */
   async function uploadJobs(jobs){
-    queue.classList.remove('hidden');
+    upMinimized=false;queue.classList.remove('hidden');
     upResetBatch(jobs.length);
     let remember=null;
     const ready=[];
