@@ -673,6 +673,11 @@ function initDrive(){
   }
   /* ---------- panel upload ala TeraCopy ---------- */
   const upCtxs=new Set();
+  /* hitungan progres batch: X dari Y file selesai */
+  let upDoneCount=0, upTotalCount=0;
+  function upBumpDone(){upDoneCount++;upTick()}
+  function upResetBatch(total){upDoneCount=0;upTotalCount=total}
+  function fmtDur(ms){const s=Math.floor(ms/1000);if(s<60)return s+' dtk';const m=Math.floor(s/60);if(m<60)return m+' mnt '+String(s%60).padStart(2,'0')+' dtk';return Math.floor(m/60)+' jam '+String(m%60).padStart(2,'0')+' mnt'}
   const fmtB=b=>b>=1073741824?(b/1073741824).toFixed(1)+' GB':b>=1048576?(b/1048576).toFixed(1)+' MB':b>=1024?(b/1024).toFixed(1)+' KB':Math.round(b)+' B';
   function upEnsureHead(){
     const q=document.getElementById('queue');if(!q||document.getElementById('upHead'))return;
@@ -717,7 +722,7 @@ function initDrive(){
       if(bar)bar.style.width=(tot?Math.round(done/tot*100):0)+'%';
       if(txt)txt.textContent=fmtB(done)+' dari '+fmtB(tot)+(spd>0?' • '+fmtSpd(spd):'')
         +(spd>0&&done<tot?' • sisa '+fmtETA((tot-done)/spd):'');
-      if(ttl)ttl.textContent='Mengupload '+n+' file';
+      if(ttl)ttl.textContent='Mengupload '+n+' file'+(upTotalCount>0?' • '+Math.min(upDoneCount,upTotalCount)+' dari '+upTotalCount+' selesai':'');
       if(pb){pb.textContent=[...upCtxs].every(c=>c.paused||c.cancelled)?'Lanjut semua':'Jeda semua';pb.style.display=''}
       if(cb)cb.style.display='';
     }else if(rows){
@@ -851,6 +856,7 @@ function initDrive(){
   /* antrean upload: cek duplikat dulu, lalu kirim maks 3 paralel */
   async function uploadJobs(jobs){
     queue.classList.remove('hidden');
+    upResetBatch(jobs.length);
     let remember=null;
     const ready=[];
     for(const j of jobs){
@@ -870,7 +876,7 @@ function initDrive(){
           }
         }
       }catch(e){/* abaikan, upload biasa */}
-      if(action==='skip'){const r=qitem(f.name,'');r.status.textContent='Dilewati (sudah ada)';setTimeout(()=>r.el.remove(),2500);continue}
+      if(action==='skip'){const r=qitem(f.name,'');r.status.textContent='Dilewati (sudah ada)';upBumpDone();setTimeout(()=>r.el.remove(),2500);continue}
       ready.push({f:f,overwriteId:overwriteId,folderId:j.folderId});
     }
     let idx=0;
@@ -921,7 +927,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     const dupNow=()=>api('/api/check-duplicate',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:f.name,size:f.size,folder_id:folderId})})
       .then(chk=>!!(chk&&chk.duplicate)).catch(()=>false);
-    const skipDup=()=>{row.el.classList.remove('err');row.status.textContent='Sudah ada di Drive — dilewati ✓';
+    const skipDup=()=>{row.el.classList.remove('err');row.status.textContent='Sudah ada di Drive — dilewati ✓';upBumpDone();
       setTimeout(()=>{row.el.remove();loadFolders();load()},2500);done();};
     const fail=(msg,retryable)=>{
       if(retryable&&attempt<MAX_TRY){
@@ -945,7 +951,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     };
     x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}
       row.spd.textContent='';
-      if(x.status===200&&j.ok){row.status.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';setTimeout(()=>row.el.remove(),2500);done()}
+      if(x.status===200&&j.ok){row.status.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';upBumpDone();setTimeout(()=>row.el.remove(),2500);done()}
       else fail(j.error||('HTTP '+x.status),(x.status===429||x.status===408||x.status>=500))};
     x.onerror=()=>fail('Koneksi terputus',true);
     x.ontimeout=()=>fail('Timeout',true);
@@ -1043,12 +1049,15 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       const pc=setPct(),now=Date.now(),dt=(now-lastT)/1000;
       ctx._done=done;
       if(dt>=0.5){const b=done*chunk_size,spd=(b-lastB)/dt;lastT=now;lastB=b;ctx._spd=spd;
-        row.spd.textContent=fmtSpd(spd)+' • '+pc+'%'}
-      lbl.textContent='Mengupload '+done+'/'+total+' potongan… ';
+        row.spd.textContent=fmtSpd(spd)+' • '+pc+'% • '+fmtDur(now-ctx._t0)}
+      lbl.textContent='Tahap 2/3 • Potongan '+done+'/'+total+'… ';
     }
-    lbl.textContent='Merakit & mengirim ke Telegram, mohon tunggu… ';row.spd.textContent='';
+    lbl.textContent='Tahap 3/3 • Mengirim ke Telegram, mohon tunggu… ';row.spd.textContent='';
+    /* bila complete lama (>8 dtk), kemungkinan menunggu giliran antrean Telegram */
+    const tgWaitT=setTimeout(()=>{if(lbl.textContent.startsWith('Tahap 3/3'))lbl.textContent='Tahap 3/3 • Mengirim ke Telegram (menunggu giliran)… '},8000);
     /* complete dengan backoff bila Telegram rate-limit (429 + retry_after) */
     let cj=null;
+    try{
     for(let ra=0;;ra++){
       const fdc=new FormData();fdc.append('upload_id',upload_id);
       if(token)fdc.append('transfer_token',token);
@@ -1063,6 +1072,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       }
       throw new Error(cj.error||('HTTP '+rc.status));
     }
+    }finally{clearTimeout(tgWaitT)}
     const j=cj;
     return j;
   }
@@ -1081,12 +1091,12 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     const upid=upStart();
     const row=qitem(f.name,'');
     const lbl=document.createElement('span');row.status.appendChild(lbl);
-    const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0,base:'',token:''};
+    const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0,base:'',token:'',_t0:Date.now()};
     const ctl=addChunkControls(row,ctx,lbl);
     upReg(ctx);
     clientKey=clientKey||('ck_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10));
     try{
-      lbl.textContent='Menyiapkan… ';
+      lbl.textContent='Tahap 1/3 • Menyiapkan… ';
       const init=await api('/api/upload/init',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({name:f.name,file_size:f.size,folder_id:folderId,overwrite_id:overwriteId,client_key:clientKey})});
       Object.assign(ctx,{upload_id:init.upload_id,chunk_size:init.chunk_size,total:init.total_chunks,
@@ -1101,6 +1111,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       idbDelHandle('fhu:'+ctx.upload_id);
       upDone(upid);upUnreg(ctx);
       lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
+      upBumpDone();
       ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
     }catch(e){
       upDone(upid);upUnreg(ctx);
@@ -1145,7 +1156,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
         bp.remove();bc.remove();inp.remove();
         const ls=getLocalSessions().find(x=>x.upload_id===s.upload_id)||{};
         const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:s.upload_id,chunk_size:s.chunk_size,total:s.total_chunks,
-          base:ls.base||'',token:ls.token||''};
+          base:ls.base||'',token:ls.token||'',_t0:Date.now()};
         const upid=upStart();
         const ctl=addChunkControls(row,ctx,lbl);
         upReg(ctx);
@@ -1154,6 +1165,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
           clearLocalSession(s.upload_id);
           idbDelHandle('fhu:'+s.upload_id);
           lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
+          upBumpDone();
           ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
         }catch(e){if(!ctx.cancelled){row.el.classList.add('err');ctl.remove();lbl.textContent='Gagal: '+e.message}}
         upDone(upid);upUnreg(ctx);
@@ -1201,6 +1213,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   document.getElementById('navBack').onclick=navBack;
   document.getElementById('navFwd').onclick=navFwd;
   document.getElementById('navUp').onclick=navUp;
+  document.getElementById('navRefresh').onclick=e=>{const b=e.currentTarget;b.classList.remove('spinning');void b.offsetWidth;b.classList.add('spinning');loadFolders();load();loadStorage();setTimeout(()=>b.classList.remove('spinning'),750)};
   /* mode pilih banyak — via tahan lama (HP) atau ⋯ → Pilih banyak (desktop) */
   const ovSel=document.getElementById('ovSelBtn');
   if(ovSel)ovSel.onclick=()=>sel.mode?exitSelMode():enterSelMode();
