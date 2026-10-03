@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active='activity' %}
+{% block title %}Aktivitas — TG Drive{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <div class="tools" style="margin-left:0">
+    <input id="aq" type="search" placeholder="Cari nama file…">
+    <select id="aaction">
+      <option value="">Semua aktivitas</option>
+      <option value="upload">Upload</option>
+      <option value="overwrite">Timpa file</option>
+      <option value="rename_file">Ganti nama file</option>
+      <option value="trash">Hapus ke tong sampah</option>
+      <option value="restore">Kembalikan</option>
+      <option value="delete">Hapus permanen</option>
+      <option value="create_folder">Buat folder</option>
+      <option value="rename_folder">Ganti nama folder</option>
+      <option value="delete_folder">Hapus folder</option>
+      <option value="share">Bagikan</option>
+      <option value="favorite">Favorit</option>
+      <option value="switch_account">Ganti akun</option>
+      <option value="login">Login</option>
+    </select>
+    <select id="adate">
+      <option value="">Semua waktu</option>
+      <option value="today">Hari ini</option>
+      <option value="yesterday">Kemarin</option>
+      <option value="7">7 hari terakhir</option>
+      <option value="30">30 hari terakhir</option>
+    </select>
+    <select id="asort">
+      <option value="desc">Terbaru dulu</option>
+      <option value="asc">Terlama dulu</option>
+    </select>
+  </div>
+</div>
+<div id="alist"></div>
+<div id="aempty" class="empty hidden">Belum ada aktivitas yang cocok.</div>
+<div style="text-align:center;margin:22px 0"><button class="btn ghost" id="amore">Muat lagi</button></div>
+{% endblock %}
+{% block scripts %}
+<script>initActivity();</script>
+{% endblock %}
