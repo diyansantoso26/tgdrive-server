@@ -185,7 +185,7 @@ label.btn{cursor:pointer}
 .sharelink{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px;word-break:break-all;font-size:.82rem;margin:10px 0;color:var(--acc)}
 @media(max-width:640px){.tools{margin-left:0}.topbar{gap:12px}}
 /* ===== Material Symbols Rounded (self-hosted, subset 78 ikon) ===== */
-@font-face{font-family:'Material Symbols Rounded';font-style:normal;font-weight:100 700;font-display:block;src:url('/static/fonts/msymbols.woff2') format('woff2')}
+@font-face{font-family:'Material Symbols Rounded';font-style:normal;font-weight:100 700;font-display:block;src:url('/static/fonts/msymbols-v2.woff2') format('woff2')}
 .mi{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;direction:ltr;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;user-select:none;font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24}
 .mi.fill{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24}
 button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
