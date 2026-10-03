@@ -152,6 +152,13 @@ label.btn{cursor:pointer}
 .empty{text-align:center;color:var(--muted);padding:60px 20px;line-height:1.8}
 .sharelink{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px;word-break:break-all;font-size:.82rem;margin:10px 0;color:var(--acc)}
 @media(max-width:640px){.tools{margin-left:0}.topbar{gap:12px}}
+/* ===== Material Symbols Rounded (self-hosted, subset 78 ikon) ===== */
+@font-face{font-family:'Material Symbols Rounded';font-style:normal;font-weight:100 700;font-display:block;src:url('/static/fonts/msymbols.woff2') format('woff2')}
+.mi{font-family:'Material Symbols Rounded';font-weight:400;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;direction:ltr;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;user-select:none;font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24}
+.mi.fill{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24}
+button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
+/* --- 78 kelas ikon (nama Material Symbols) --- */
+
 /* kunci folder */
 .fitem .thumb{position:relative}
 .lk{position:absolute;top:6px;left:6px;font-size:1rem;background:#000a;border-radius:6px;padding:2px 5px}
@@ -384,3 +391,81 @@ body.page-photos .tl-jgrid .fitem .thumb img{width:100%;height:100%;object-fit:c
 .popmenu button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--ink);padding:10px 12px;border-radius:8px;font-size:.9rem;cursor:pointer;font-family:inherit}
 .popmenu button:hover{background:var(--bg2)}
 .popmenu button.on{color:var(--acc);font-weight:700}
+.mi-account-circle::before{content:"\E853"}
+.mi-add::before{content:"\E145"}
+.mi-arrow-back::before{content:"\E5C4"}
+.mi-arrow-forward::before{content:"\E5C8"}
+.mi-arrow-upward::before{content:"\E5D8"}
+.mi-block::before{content:"\E033"}
+.mi-bolt::before{content:"\EA0B"}
+.mi-calendar-month::before{content:"\EBCC"}
+.mi-celebration::before{content:"\EA65"}
+.mi-chat::before{content:"\E0B7"}
+.mi-check::before{content:"\E5CA"}
+.mi-check-box::before{content:"\E834"}
+.mi-check-circle::before{content:"\E86C"}
+.mi-chevron-left::before{content:"\E408"}
+.mi-chevron-right::before{content:"\E409"}
+.mi-close::before{content:"\E14C"}
+.mi-cloud::before{content:"\E2BD"}
+.mi-content-copy::before{content:"\E14D"}
+.mi-dark-mode::before{content:"\E51C"}
+.mi-delete::before{content:"\E872"}
+.mi-description::before{content:"\E873"}
+.mi-download::before{content:"\E171"}
+.mi-drive-file-move::before{content:"\E675"}
+.mi-edit::before{content:"\E150"}
+.mi-edit-note::before{content:"\E745"}
+.mi-expand-more::before{content:"\E5CF"}
+.mi-explore::before{content:"\E87A"}
+.mi-filter-list::before{content:"\E152"}
+.mi-folder::before{content:"\E2C7"}
+.mi-folder-open::before{content:"\E2C8"}
+.mi-folder-zip::before{content:"\EB2C"}
+.mi-fullscreen::before{content:"\E5D0"}
+.mi-grid-view::before{content:"\E9B0"}
+.mi-help::before{content:"\E887"}
+.mi-history::before{content:"\E28E"}
+.mi-home::before{content:"\E88A"}
+.mi-hourglass-empty::before{content:"\E88B"}
+.mi-image::before{content:"\E251"}
+.mi-info::before{content:"\E88E"}
+.mi-inventory-2::before{content:"\E1A1"}
+.mi-label::before{content:"\E892"}
+.mi-link::before{content:"\E157"}
+.mi-lock::before{content:"\E88D"}
+.mi-lock-open::before{content:"\E898"}
+.mi-logout::before{content:"\E9BA"}
+.mi-more-horiz::before{content:"\E5D3"}
+.mi-more-vert::before{content:"\E5D4"}
+.mi-movie::before{content:"\E02C"}
+.mi-music-note::before{content:"\E3A1"}
+.mi-open-in-new::before{content:"\E895"}
+.mi-palette::before{content:"\E3B7"}
+.mi-payments::before{content:"\EF63"}
+.mi-person::before{content:"\E7FD"}
+.mi-photo-library::before{content:"\E413"}
+.mi-play-arrow::before{content:"\E037"}
+.mi-redeem::before{content:"\E8B1"}
+.mi-repeat::before{content:"\E040"}
+.mi-save::before{content:"\E161"}
+.mi-search::before{content:"\E8B6"}
+.mi-select-all::before{content:"\E162"}
+.mi-send::before{content:"\E163"}
+.mi-settings::before{content:"\E8B8"}
+.mi-share::before{content:"\E80D"}
+.mi-star::before{content:"\E838"}
+.mi-swap-vert::before{content:"\E0C3"}
+.mi-sync::before{content:"\E627"}
+.mi-text-snippet::before{content:"\F1C6"}
+.mi-tune::before{content:"\E429"}
+.mi-undo::before{content:"\E166"}
+.mi-upload::before{content:"\E2C6"}
+.mi-videocam::before{content:"\E04B"}
+.mi-view-list::before{content:"\E8EF"}
+.mi-view-module::before{content:"\E8F0"}
+.mi-visibility::before{content:"\E417"}
+.mi-visibility-off::before{content:"\E8F5"}
+.mi-vpn-key::before{content:"\E0DA"}
+.mi-warning::before{content:"\E002"}
+.mi-workspace-premium::before{content:"\E7AF"}
