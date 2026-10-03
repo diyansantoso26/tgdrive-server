@@ -5,6 +5,8 @@
 <div class="toolbar">
   <div class="crumbs" id="crumbs"><button class="crumb on" data-f="root">Drive Saya</button></div>
   <div class="tools">
+    <button class="btn ghost tbtn" id="undoBtn" title="Urungkan (Ctrl+Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
+    <button class="btn ghost tbtn" id="redoBtn" title="Ulangi (Ctrl+Shift+Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
     <input id="q" type="search" placeholder="Cari file…">
     <select id="sort">
       <option value="date-desc">Terbaru</option>
@@ -16,14 +18,19 @@
     </select>
     <button class="btn ghost" id="viewToggle" title="Ganti tampilan">▦</button>
     <button class="btn ghost" id="newFolderBtn">+ Folder</button>
-    <button class="btn ghost" id="trashBtn">Tong Sampah</button>
+    <div class="ovwrap">
+      <button class="btn ghost" id="ovBtn" title="Menu lainnya">⋯</button>
+      <div class="ovdrop hidden" id="ovDrop">
+        <a class="accmi" id="trashBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Tong Sampah</a>
+        <label class="accmi" for="folderInput"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>Upload folder</label>
+        {% if is_pro %}
+        <a class="accmi" id="directBtn" title="Mode upload besar via jalur langsung (tanpa batas Cloudflare)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Mode Besar</a>
+        {% endif %}
+      </div>
+    </div>
     <label class="btn primary" for="fileInput">⬆ Upload</label>
     <input id="fileInput" type="file" multiple hidden>
-    <label class="btn ghost" for="folderInput" title="Upload satu folder beserta isinya">📁 Folder</label>
     <input id="folderInput" type="file" webkitdirectory hidden>
-    {% if is_pro %}
-    <button class="btn ghost" id="directBtn" title="Mode upload besar via jalur langsung (tanpa batas Cloudflare)">⚡ Mode Besar</button>
-    {% endif %}
   </div>
 </div>
 <div id="directBar" class="warnbar hidden" style="margin-bottom:12px"></div>
@@ -40,6 +47,14 @@
 {% block scripts %}
 <script>
 initDrive();
+// Menu ⋯ (Tong Sampah, Upload folder, Mode Besar)
+(function(){
+  const b=document.getElementById('ovBtn'),d=document.getElementById('ovDrop');
+  if(!b||!d)return;
+  b.addEventListener('click',e=>{e.stopPropagation();d.classList.toggle('hidden')});
+  document.addEventListener('click',e=>{if(!d.classList.contains('hidden')&&!e.target.closest('.ovwrap'))d.classList.add('hidden')});
+  d.addEventListener('click',()=>d.classList.add('hidden'));
+})();
 // Indikator koneksi: domain vs jalur langsung (IP publik)
 (function(){
   const b=document.getElementById('connBadge');if(!b)return;
