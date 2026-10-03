@@ -191,16 +191,91 @@ def detect_kind(filename):
     return 'doc'
 
 
+_EXIF_DATE_TAGS = ('DateTimeOriginal', 'CreateDate', 'DateTime')  # prioritas
+_EXIF_DT_FMTS = ('%Y:%m:%d %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y:%m:%d', '%Y-%m-%d')
+
+def _valid_taken(dt):
+    """Tanggal foto yang masuk akal: 1990..besok. Selain itu -> None."""
+    if not dt:
+        return None
+    now = datetime.now()
+    return dt if datetime(1990, 1, 1) <= dt <= now + timedelta(days=1) else None
+
+def _parse_exif_dt(val):
+    for fmt in _EXIF_DT_FMTS:
+        try:
+            return datetime.strptime(str(val).strip(), fmt)
+        except (ValueError, TypeError):
+            continue
+    return None
+
 def exif_taken_at(path):
     try:
         img = Image.open(path)
         exif = img.getexif()
+        dated = {}
         for tag_id, val in exif.items():
-            if TAGS.get(tag_id) == 'DateTimeOriginal' and val:
-                return datetime.strptime(str(val), '%Y:%m:%d %H:%M:%S').isoformat(timespec='seconds')
+            name = TAGS.get(tag_id)
+            if name in _EXIF_DATE_TAGS and val and name not in dated:
+                dated[name] = val
+        for tag in _EXIF_DATE_TAGS:
+            if tag in dated:
+                dt = _valid_taken(_parse_exif_dt(dated[tag]))
+                if dt:
+                    return dt.isoformat(timespec='seconds')
     except Exception:
         pass
     return None
+
+# pola tanggal di nama file: (regex, pembentuk tuple datetime)
+_FILENAME_DT_RES = [
+    # IMG_20260205_201014 / IMG-20260205-WA0001 (abaikan, cocok pola 2) /
+    # VID_20260205_201014 / PXL_20260205_201014 / 20260205_201014
+    (re.compile(r'(?<!\d)(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])[_-]([01]\d|2[0-3])([0-5]\d)([0-5]\d)'),
+     lambda m: (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6))),
+    # IMG-20260205-WA0001 / 20260205 (tanggal saja)
+    (re.compile(r'(?<!\d)(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])(?!\d)'),
+     lambda m: (m.group(1), m.group(2), m.group(3), '0', '0', '0')),
+    # Screenshot_2026-02-05-20-10-14 / 2026-02-05_20-10-14
+    (re.compile(r'(?<!\d)(20\d{2})-(0[1-9]|1[0-2])-([0-2]\d|3[01])[_-]([01]\d|2[0-3])[.-]([0-5]\d)[.-]([0-5]\d)'),
+     lambda m: (m.group(1), m.group(2), m.group(3), m.group(4), m.group(5), m.group(6))),
+    # 2026-02-05 (tanggal saja, format strip)
+    (re.compile(r'(?<!\d)(20\d{2})-(0[1-9]|1[0-2])-([0-2]\d|3[01])(?!\d)'),
+     lambda m: (m.group(1), m.group(2), m.group(3), '0', '0', '0')),
+]
+
+def filename_taken_at(name):
+    """Ambil tanggal dari nama file. Kembalikan ISO string atau None."""
+    base = os.path.splitext(name or '')[0]
+    if not base:
+        return None
+    for rx, build in _FILENAME_DT_RES:
+        m = rx.search(base)
+        if not m:
+            continue
+        try:
+            dt = datetime(*[int(x) for x in build(m)])
+        except (ValueError, TypeError):
+            continue
+        dt = _valid_taken(dt)
+        if dt:
+            return dt.isoformat(timespec='seconds')
+    # timestamp murni: 13 digit = milidetik, 10 digit = detik
+    if re.fullmatch(r'\d{13}', base):
+        dt = _valid_taken(datetime.fromtimestamp(int(base) / 1000))
+        if dt:
+            return dt.isoformat(timespec='seconds')
+    if re.fullmatch(r'\d{10}', base):
+        dt = _valid_taken(datetime.fromtimestamp(int(base)))
+        if dt:
+            return dt.isoformat(timespec='seconds')
+    return None
+
+def photo_taken_at(path, name, kind):
+    """Tanggal asli foto/video: EXIF dulu, lalu nama file. Untuk upload baru."""
+    if kind not in ('photo', 'video'):
+        return None
+    return exif_taken_at(path) or filename_taken_at(name)
 
 
 def cache_path_for(file_id):
@@ -555,9 +630,14 @@ def api_files():
         trashed=1 if request.args.get('trashed') == '1' else 0,
         favorites_only=request.args.get('fav') == '1',
         kind_in=request.args.get('kinds').split(',') if request.args.get('kinds') else None,
+        label_id=request.args.get('label_id') or None,
     )
     # sembunyikan isi folder terkunci dari tampilan gabungan (Foto, pencarian, favorit, sampah)
     files, locked_hidden = _filter_locked(files)
+    if request.args.get('with_labels') == '1':
+        lm = db.labels_for_files(uid(), [f['id'] for f in files])
+        for f in files:
+            f['labels'] = lm.get(f['id'], [])
     return jsonify({'files': files, 'locked_hidden': locked_hidden})
 
 
@@ -821,7 +901,7 @@ def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, cre
     """Kirim file lokal ke Telegram + catat DB. Dipakai upload biasa & chunked."""
     kind = detect_kind(orig_name)
     mime = mimetypes.guess_type(orig_name)[0]
-    taken = exif_taken_at(tmp_path) if kind == 'photo' else None
+    taken = photo_taken_at(tmp_path, orig_name, kind)
     caption = orig_name[:900]
 
     if kind == 'photo':
@@ -1279,6 +1359,330 @@ def api_fav(fid):
     return jsonify({'ok': True})
 
 
+# ---------- operasi massal (bulk select) ----------
+def _bulk_ids(data, key='ids'):
+    ids = data.get(key) or []
+    out = []
+    for x in ids:
+        try:
+            out.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    return out[:500]  # batas wajar per request
+
+
+@app.route('/api/files/bulk-trash', methods=['POST'])
+@login_required
+def api_bulk_trash():
+    data = request.get_json(force=True, silent=True) or {}
+    nf = db.bulk_trash_files(uid(), _bulk_ids(data, 'file_ids'))
+    nfd = db.bulk_trash_folders(uid(), _bulk_ids(data, 'folder_ids'))
+    db.log_activity('bulk_trash', uid(), file_name='%d file, %d folder' % (nf, nfd))
+    return jsonify({'ok': True, 'files': nf, 'folders': nfd})
+
+
+@app.route('/api/files/bulk-restore', methods=['POST'])
+@login_required
+def api_bulk_restore():
+    """Kembalikan banyak file dari tong sampah (untuk Urungkan massal)."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids = _bulk_ids(data)
+    n = 0
+    for fid in ids:
+        try:
+            db.set_trashed(fid, uid(), False)
+            n += 1
+        except Exception:
+            pass
+    return jsonify({'ok': True, 'restored': n})
+
+
+@app.route('/api/files/bulk-move', methods=['POST'])
+@login_required
+def api_bulk_move():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        nf, nfld, skip = db.bulk_move(uid(), _bulk_ids(data, 'file_ids'),
+                                      _bulk_ids(data, 'folder_ids'),
+                                      data.get('folder_id'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    db.log_activity('bulk_move', uid(), file_name='%d file, %d folder' % (nf, nfld))
+    return jsonify({'ok': True, 'files': nf, 'folders': nfld, 'skipped': skip})
+
+
+@app.route('/api/files/bulk-favorite', methods=['POST'])
+@login_required
+def api_bulk_favorite():
+    data = request.get_json(force=True, silent=True) or {}
+    n = db.bulk_favorite(uid(), _bulk_ids(data), bool(data.get('fav', True)))
+    return jsonify({'ok': True, 'count': n})
+
+
+@app.route('/api/files/bulk-label', methods=['POST'])
+@login_required
+def api_bulk_label():
+    """Tambahkan label ke banyak file sekaligus."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        label_ids = [int(x) for x in (data.get('label_ids') or [])]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'label_ids tidak valid'}), 400
+    n = 0
+    for fid in _bulk_ids(data):
+        n += db.add_file_labels(fid, uid(), label_ids)
+    return jsonify({'ok': True, 'added': n})
+
+
+@app.route('/api/files/download-zip')
+@login_required
+def api_download_zip():
+    """Unduh banyak file sebagai satu ZIP (dibuat di disk sementara, dihapus setelah dikirim)."""
+    import tempfile
+    import zipfile as _zf
+    try:
+        ids = [int(x) for x in request.args.get('ids', '').split(',') if x.strip()]
+    except ValueError:
+        return jsonify({'error': 'ids tidak valid'}), 400
+    ids = ids[:100]
+    if not ids:
+        return jsonify({'error': 'Pilih file dulu'}), 400
+    recs = [db.get_file(fid, uid()) for fid in ids]
+    recs = [r for r in recs if r and not r.get('trashed')]
+    if not recs:
+        return jsonify({'error': 'Tidak ada file valid'}), 404
+    creds = _user_creds(user_id=uid())
+    if not creds:
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    tmpzip = tempfile.mktemp(suffix='.zip', dir=config.TMP_DIR)
+    names, ok = set(), 0
+    try:
+        with _zf.ZipFile(tmpzip, 'w', _zf.ZIP_DEFLATED) as zf:
+            for r in recs:
+                try:
+                    if (r.get('size') or 0) > 1024 * 1024 * 1024:
+                        continue  # batasi 1GB per file
+                    tmpf = tempfile.mktemp(dir=config.TMP_DIR)
+                    tg.download_file(r['file_id'], tmpf, creds)
+                    nm = r['name']
+                    i = 2
+                    while nm in names:
+                        base, dot, ext = r['name'].rpartition('.')
+                        nm = '%s (%d).%s' % (base, i, ext) if dot else '%s (%d)' % (r['name'], i)
+                        i += 1
+                    names.add(nm)
+                    zf.write(tmpf, nm)
+                    ok += 1
+                except Exception:
+                    continue
+                finally:
+                    try:
+                        os.remove(tmpf)
+                    except (OSError, NameError):
+                        pass
+    except Exception as e:
+        try:
+            os.remove(tmpzip)
+        except OSError:
+            pass
+        return jsonify({'error': 'Gagal membuat ZIP: %s' % e}), 500
+    if not ok:
+        try:
+            os.remove(tmpzip)
+        except OSError:
+            pass
+        return jsonify({'error': 'Tidak ada file yang bisa diunduh'}), 500
+
+    def _cleanup():
+        try:
+            os.remove(tmpzip)
+        except OSError:
+            pass
+
+    resp = send_file(tmpzip, mimetype='application/zip', as_attachment=True,
+                     download_name='tgdrive-%d-file.zip' % ok)
+    resp.call_on_close(_cleanup)
+    return resp
+
+
+# ---------- label kustom ----------
+@app.route('/api/labels', methods=['GET'])
+@login_required
+def api_labels():
+    labels = db.list_labels(uid())
+    if request.args.get('covers') == '1':
+        conn = db.get_db()
+        for l in labels:
+            rows = conn.execute(
+                'SELECT f.id FROM file_labels fl JOIN files f ON f.id=fl.file_id'
+                ' WHERE fl.label_id=? AND f.trashed=0 AND f.user_id=?'
+                ' AND f.kind IN (\'photo\',\'video\')'
+                ' ORDER BY COALESCE(f.taken_at, f.uploaded_at) DESC LIMIT 4',
+                (l['id'], uid())).fetchall()
+            l['covers'] = [r[0] for r in rows]
+        conn.close()
+    return jsonify({'labels': labels})
+
+
+@app.route('/api/labels', methods=['POST'])
+@login_required
+def api_label_create():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        lid = db.create_label(uid(), data.get('name', ''),
+                              data.get('color', '#4f8cff'), data.get('icon', ''))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Nama label sudah dipakai'}), 400
+    return jsonify({'ok': True, 'id': lid})
+
+
+@app.route('/api/labels/<int:lid>', methods=['PUT'])
+@login_required
+def api_label_update(lid):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        db.update_label(lid, uid(), name=data.get('name'), color=data.get('color'),
+                        icon=data.get('icon'))
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Nama label sudah dipakai'}), 400
+    return jsonify({'ok': True})
+
+
+@app.route('/api/labels/<int:lid>', methods=['DELETE'])
+@login_required
+def api_label_delete(lid):
+    db.delete_label(lid, uid())
+    return jsonify({'ok': True})
+
+
+@app.route('/api/files/<int:fid>/labels', methods=['GET'])
+@login_required
+def api_file_labels(fid):
+    return jsonify({'label_ids': db.get_file_labels(fid, uid())})
+
+
+# ---------- editor teks (.txt / .md) ----------
+TEXT_EXTS = {'.txt', '.md'}
+TEXT_MAX_BYTES = 1 * 1024 * 1024   # maks isi per simpan
+TEXT_READ_MAX = 2 * 1024 * 1024    # maks ukuran file yang bisa dibuka di editor
+
+
+def _text_ext_ok(name):
+    return os.path.splitext(name or '')[1].lower() in TEXT_EXTS
+
+
+@app.route('/api/files/create-text', methods=['POST'])
+@login_required
+def api_create_text():
+    import tempfile
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get('name') or '').strip()[:200]
+    content = data.get('content') or ''
+    if not _text_ext_ok(name) or not os.path.splitext(name)[0]:
+        return jsonify({'error': 'Nama file harus berekstensi .txt atau .md'}), 400
+    raw = content.encode('utf-8')
+    if len(raw) > TEXT_MAX_BYTES:
+        return jsonify({'error': 'Isi terlalu besar (maks 1 MB)'}), 413
+    if not tg_configured():
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    folder_id = data.get('folder_id')
+    fid = None
+    if folder_id not in (None, '', 'root'):
+        try:
+            f = db.get_folder(int(folder_id), uid())
+        except (TypeError, ValueError):
+            f = None
+        if not f:
+            return jsonify({'error': 'Folder tidak ditemukan'}), 400
+        if not folder_accessible(f['id']):
+            return jsonify({'error': 'Folder terkunci'}), 403
+        fid = f['id']
+    me_u = db.get_user(uid())
+    quota_bytes = (me_u['quota_mb'] if me_u else 102400) * 1024 * 1024
+    if db.user_storage_bytes(uid()) + len(raw) > quota_bytes:
+        return jsonify({'error': 'Kuota penyimpanan habis (%s).' % fmt_size(quota_bytes)}), 413
+    creds = _user_creds(user_id=uid())
+    if not creds:
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    tmp = tempfile.mktemp(suffix=os.path.splitext(name)[1].lower(), dir=config.TMP_DIR)
+    try:
+        with open(tmp, 'wb') as fh:
+            fh.write(raw)
+        new_id, _ = _process_upload_file(tmp, name, len(raw), fid, None, creds,
+                                         uid(), time.time())
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    return jsonify({'ok': True, 'id': new_id})
+
+
+@app.route('/api/files/<int:fid>/content')
+@login_required
+def api_file_content(fid):
+    import tempfile
+    rec = db.get_file(fid, uid())
+    if not rec:
+        return jsonify({'error': 'Tidak ketemu'}), 404
+    if not _text_ext_ok(rec['name']):
+        return jsonify({'error': 'Hanya file .txt/.md yang bisa dibuka di editor'}), 400
+    if (rec.get('size') or 0) > TEXT_READ_MAX:
+        return jsonify({'error': 'File terlalu besar untuk dibuka di editor (>2 MB)'}), 413
+    creds = _user_creds(user_id=uid())
+    if not creds:
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    tmp = tempfile.mktemp(dir=config.TMP_DIR)
+    try:
+        tg.download_file(rec['file_id'], tmp, creds)
+        with open(tmp, 'rb') as fh:
+            raw = fh.read(TEXT_READ_MAX + 1)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    if len(raw) > TEXT_READ_MAX:
+        return jsonify({'error': 'File terlalu besar untuk dibuka di editor'}), 413
+    return jsonify({'ok': True, 'content': raw.decode('utf-8', errors='replace')})
+
+
+@app.route('/api/files/<int:fid>/content', methods=['PUT'])
+@login_required
+def api_file_content_save(fid):
+    import tempfile
+    rec = db.get_file(fid, uid())
+    if not rec:
+        return jsonify({'error': 'Tidak ketemu'}), 404
+    if not _text_ext_ok(rec['name']):
+        return jsonify({'error': 'Hanya file .txt/.md yang bisa diedit'}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    raw = (data.get('content') or '').encode('utf-8')
+    if len(raw) > TEXT_MAX_BYTES:
+        return jsonify({'error': 'Isi terlalu besar (maks 1 MB)'}), 413
+    if not tg_configured():
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    creds = _user_creds(user_id=uid())
+    if not creds:
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    tmp = tempfile.mktemp(suffix=os.path.splitext(rec['name'])[1].lower(), dir=config.TMP_DIR)
+    try:
+        with open(tmp, 'wb') as fh:
+            fh.write(raw)
+        _process_upload_file(tmp, rec['name'], len(raw), rec.get('folder_id'), None,
+                             creds, uid(), time.time(), old_rec=rec)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    return jsonify({'ok': True})
+
+
 @app.route('/api/share', methods=['POST'])
 @login_required
 def api_share():
@@ -1303,6 +1707,8 @@ def api_storage():
     u = db.get_user(uid())
     st['quota_mb'] = u['quota_mb'] if u else 102400
     st['is_pro'] = is_pro()
+    st['used_mb'] = (st.get('bytes') or 0) / 1024 / 1024
+    st['files'] = st.get('count', 0)
     return jsonify(st)
 
 
