@@ -1371,17 +1371,46 @@ function initPhotos(){
   /* ---------- scrubber timeline ---------- */
   let grpEls=[];
   function refreshScrub(){
-    grpEls=[...tl.querySelectorAll('.tl-group')].map(g=>({el:g,label:g.dataset.ml}));
+    grpEls=[...tl.querySelectorAll('.tl-group')].map(g=>({el:g,ml:g.dataset.ml,yl:g.dataset.yl}));
     scrub.classList.toggle('hidden',grpEls.length<2);
+    requestAnimationFrame(buildYearTicks);
   }
-  function knobTo(ratio){knob.style.top='calc('+(Math.max(0,Math.min(1,ratio))*100)+'% - 6px)'}
+  // tick label tahun ala Google Photos, posisi proporsional thd grup pertama tiap tahun
+  function buildYearTicks(){
+    scrub.querySelectorAll('.ytick').forEach(e=>e.remove());
+    if(grpEls.length<2)return;
+    const H=scrub.clientHeight,sh=tl.scrollHeight;
+    if(!H||!sh||sh<=wrap.clientHeight+2)return;
+    let lastY=-99;const seen=new Set();
+    grpEls.forEach(g=>{
+      if(!g.yl||seen.has(g.yl))return;seen.add(g.yl);
+      const y=(g.el.offsetTop/sh)*H;
+      if(y-lastY<24)return;lastY=y; // hindari label bertumpuk
+      const t=document.createElement('div');t.className='ytick';t.style.top=y+'px';t.textContent=g.yl;
+      scrub.appendChild(t);
+    });
+  }
+  function knobTo(ratio){ratio=Math.max(0,Math.min(1,ratio));knob.dataset.r=ratio;knob.style.top='calc('+(ratio*100)+'% - 6px)'}
+  // knob mengikuti scroll dengan smoothing rAF (drag tetap instan 1:1)
+  let knobRaf=0,knobTarget=0;
+  function knobToSmooth(ratio){
+    knobTarget=Math.max(0,Math.min(1,ratio));
+    if(!knobRaf)knobRaf=requestAnimationFrame(knobStep);
+  }
+  function knobStep(){
+    knobRaf=0;
+    const cur=parseFloat(knob.dataset.r||'0');
+    const nxt=cur+(knobTarget-cur)*0.3;
+    knobTo(nxt);
+    if(Math.abs(knobTarget-nxt)>0.002)knobRaf=requestAnimationFrame(knobStep);
+  }
   let dragging=false;
   function scrubMove(clientY){
     const r=scrub.getBoundingClientRect();
     const ratio=Math.max(0,Math.min(1,(clientY-r.top)/r.height));
     const idx=Math.min(grpEls.length-1,Math.floor(ratio*grpEls.length));
     const g=grpEls[idx];if(!g)return;
-    bub.textContent=g.label;bub.style.top=(ratio*100)+'%';
+    bub.textContent=g.ml;bub.style.top=(ratio*100)+'%';
     knobTo(ratio);
     wrap.scrollTo({top:g.el.offsetTop,behavior:dragging?'auto':'smooth'});
   }
@@ -1392,8 +1421,9 @@ function initPhotos(){
     if(!grpEls.length||dragging)return;
     const y=wrap.scrollTop+80;let idx=0;
     grpEls.forEach((g,i)=>{if(g.el.offsetTop<=y)idx=i});
-    knobTo(grpEls.length>1?idx/(grpEls.length-1):0);
+    knobToSmooth(grpEls.length>1?idx/(grpEls.length-1):0);
   },{passive:true});
+  window.addEventListener('resize',()=>{if(grpEls.length)buildYearTicks()});
 
   /* ---------- render ---------- */
   function dotsFor(f){
@@ -1406,6 +1436,12 @@ function initPhotos(){
     const fb=f.kind==='video'?'🎬':'🖼';
     return '<div class="fitem" data-gi="'+gi+'"><div class="chk">✓</div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge">▶</div>':'')+'</div>';
   }
+  // thumbnail grid justified: lebar mengikuti rasio aspek (width/height dari DB)
+  function thumbJ(f,gi){
+    const ar=(f.width>0&&f.height>0)?(f.width/f.height):1;
+    const fb=f.kind==='video'?'🎬':'🖼';
+    return '<div class="fitem" data-gi="'+gi+'" style="--ar:'+ar.toFixed(3)+'"><div class="chk">✓</div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge">▶</div>':'')+'</div>';
+  }
   async function load(){
     const p=new URLSearchParams({folder:'all',sort:S.sort,order:S.order,kinds:'photo,video',with_labels:'1'});
     if(S.fav)p.set('fav','1');
@@ -1415,16 +1451,21 @@ function initPhotos(){
     S.files=files;
     const ln=document.getElementById('lockNote');
     if(ln){ln.classList.toggle('hidden',!lockedHidden);if(lockedHidden)ln.textContent='🔒 '+lockedHidden+' item di folder terkunci disembunyikan.'}
-    // grup per bulan (YYYY-MM) — dipakai juga untuk tampilan label (timeline sama)
+    // grup per HARI (YYYY-MM-DD) ala Google Photos
     const groups={};
-    files.forEach(f=>{const ym=(f.taken_at||f.uploaded_at||'').slice(0,7);if(ym)(groups[ym]=groups[ym]||[]).push(f)});
+    files.forEach(f=>{const yd=(f.taken_at||f.uploaded_at||'').slice(0,10);if(yd)(groups[yd]=groups[yd]||[]).push(f)});
     const keys=Object.keys(groups).sort((a,b)=>S.order==='asc'?a.localeCompare(b):b.localeCompare(a));
+    const dhead=yd=>new Date(yd+'T00:00:00').toLocaleDateString('id-ID',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
     if(S.view==='list'){
-      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k))+'"><div class="tl-head">'+esc(mlabel(k))+' <span class="tl-count">'+groups[k].length+' item</span></div>'+
+      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k.slice(0,7)))+'" data-yl="'+k.slice(0,4)+'"><div class="tl-head">'+esc(dhead(k))+' <span class="tl-count">'+groups[k].length+' item</span></div>'+
         groups[k].map(f=>{const gi=files.indexOf(f);
           return '<div class="prow'+(sel.mode?' selecting':'')+'" data-gi="'+gi+'"><div class="chk">✓</div><div class="pthumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+(f.kind==='video'?'🎬':'🖼')+'</div><div class="pmeta"><div class="nm">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' · '+esc(dlabel(f))+'</div></div></div>'}).join('')+'</div>').join('');
+    }else if(S.view==='grid'){
+      // grid justified: tinggi baris seragam, lebar ikut rasio aspek (data width/height DB)
+      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k.slice(0,7)))+'" data-yl="'+k.slice(0,4)+'"><div class="tl-head">'+esc(dhead(k))+' <span class="tl-count">'+groups[k].length+' item</span></div><div class="tl-jgrid'+(sel.mode?' selecting':'')+'">'+
+        groups[k].map(f=>thumbJ(f,files.indexOf(f))).join('')+'</div></div>').join('');
     }else{
-      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k))+'"><div class="tl-head">'+esc(mlabel(k))+' <span class="tl-count">'+groups[k].length+' item</span></div><div class="tl-grid'+(S.view==='compact'?' compact':'')+(sel.mode?' selecting':'')+'">'+
+      tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k.slice(0,7)))+'" data-yl="'+k.slice(0,4)+'"><div class="tl-head">'+esc(dhead(k))+' <span class="tl-count">'+groups[k].length+' item</span></div><div class="tl-grid compact'+(sel.mode?' selecting':'')+'">'+
         groups[k].map(f=>thumb(f,files.indexOf(f))).join('')+'</div></div>').join('');
     }
     empty.classList.toggle('hidden',files.length>0);
