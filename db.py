@@ -446,6 +446,38 @@ def delete_account(aid, user_id):
 
 # ---------- files (terisolasi per user) ----------
 
+def find_duplicates(user_id, account_id=None):
+    """Grup file duplikat: nama+ukuran+folder sama, belum di-trash.
+    Kembalikan list grup, tiap grup berisi file-file terurut tertua dulu."""
+    account_id = _acc_filter(user_id, account_id)
+    conn = get_db()
+    groups = conn.execute(
+        """SELECT f.name AS name, f.size AS size, f.folder_id AS folder_id,
+                  (SELECT name FROM folders WHERE id=f.folder_id) AS folder_name,
+                  COUNT(*) AS c
+           FROM files f
+           WHERE f.user_id=? AND f.account_id IS ? AND f.trashed=0
+           GROUP BY f.name, f.size, f.folder_id
+           HAVING c > 1
+           ORDER BY c DESC, f.name""",
+        (user_id, account_id)).fetchall()
+    out = []
+    for g in groups:
+        gd = _row_to_dict(g)
+        files = conn.execute(
+            """SELECT id, name, size, kind, uploaded_at
+               FROM files
+               WHERE user_id=? AND account_id IS ? AND trashed=0
+                 AND name=? AND size=?
+                 AND COALESCE(folder_id,-1)=COALESCE(?,-1)
+               ORDER BY uploaded_at ASC, id ASC""",
+            (user_id, account_id, gd['name'], gd['size'], gd['folder_id'])).fetchall()
+        gd['files'] = [_row_to_dict(f) for f in files]
+        out.append(gd)
+    conn.close()
+    return out
+
+
 def _acc_filter(user_id, account_id):
     if account_id is None:
         account_id = _active_id(user_id)
