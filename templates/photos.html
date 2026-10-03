@@ -2,26 +2,13 @@
 {% set active='photos' %}
 {% block title %}Foto — TG Drive{% endblock %}
 {% block content %}
-<div class="toolbar">
-  <div class="tools">
-    <select id="psort">
-      <option value="taken-desc">Terbaru dulu</option>
-      <option value="taken-asc">Terlama dulu</option>
-      <option value="date-desc">Upload terbaru</option>
-      <option value="size-desc">Ukuran terbesar</option>
-      <option value="size-asc">Ukuran terkecil</option>
-      <option value="name-asc">Nama A–Z</option>
-    </select>
-    <button class="btn ghost" id="pselModeBtn" title="Pilih banyak">☑ Pilih</button>
-    <button class="btn ghost" id="labManageBtn" title="Kelola label">🏷 Kelola</button>
-    <div class="seg" id="pview">
-      <button data-v="grid" class="on" title="Grid nyaman">▦</button>
-      <button data-v="compact" title="Grid rapat">▤</button>
-      <button data-v="list" title="Daftar">☰</button>
-    </div>
+<div class="fbar-wrap" id="fbarWrap">
+  <div class="fotobar">
+    <div class="lchips" id="lchips"></div>
+    <button class="iconbtn" id="psortBtn" title="Urutkan">⇅</button>
+    <button class="iconbtn" id="pviewBtn" title="Tampilan">▦</button>
   </div>
 </div>
-<div class="lchips" id="lchips"></div>
 <div id="selBar" class="selbar hidden"><span id="pselCount">0 dipilih</span><span class="spacer"></span><button id="pselAllBtn">Pilih semua</button><button id="pselCancelBtn">✕ Batal</button></div>
 <div id="lockNote" class="locknote hidden"></div>
 <div class="tl-outer" id="tlOuter">
