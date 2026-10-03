@@ -96,3 +96,14 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
   konfirmasi via WA → terima kode dari admin → redeem di halaman yang sama.
 - `is_pro()` menghormati lisensi aktif (kedaluwarsa/dicabut = PRO hilang otomatis).
 - Redeem menaikkan kuota user bila kuota lisensi lebih besar (tidak pernah turun otomatis).
+
+## UI baru (2026-10-03)
+
+- Undo/redo di Drive: tombol ⟲ ⟳ + toast "Urungkan" + Ctrl+Z/Ctrl+Shift+Z.
+  Bisa untuk: rename file/folder, pindah/kembalikan tong sampah, buat folder.
+- Menu akun: avatar lingkaran (ganti teks username + link Keluar).
+  Isi: ubah nama tampilan, Akun Telegram, Riwayat aktivitas, Pengaturan, Tema, Upgrade ke PRO, Keluar.
+- Topbar ramping: Drive | Foto | Upgrade (+ Admin). Aktivitas & Pengaturan pindah ke menu akun.
+- 5 tema (per user, tersimpan di DB): Gelap, Terang, Senja, Samudra, Hutan. Ganti via menu akun → Tema.
+- Ikon SVG di navigasi, toolbar, dan menu (mengikuti warna tema).
+- API: `PUT /api/profile` {display_name, theme}.
