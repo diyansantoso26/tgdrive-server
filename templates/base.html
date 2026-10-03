@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="id" data-theme="{{ nav_theme }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,20 +11,39 @@
 <header class="topbar">
   <a class="brand" href="{{ url_for('drive') }}">TG<span>Drive</span></a>
   <nav>
-    <a href="{{ url_for('drive') }}" class="{% if active=='drive' %}on{% endif %}">Drive</a>
-    <a href="{{ url_for('photos') }}" class="{% if active=='photos' %}on{% endif %}">Foto</a>
-    <a href="{{ url_for('activity') }}" class="{% if active=='activity' %}on{% endif %}">Aktivitas</a>
-    <a href="{{ url_for('settings') }}" class="{% if active=='settings' %}on{% endif %}">Pengaturan</a>
-    <a href="{{ url_for('upgrade_page') }}" class="{% if active=='upgrade' %}on{% endif %}">⭐ Upgrade</a>
-    {% if nav_is_admin %}<a href="{{ url_for('admin_page') }}" class="{% if active=='admin' %}on{% endif %}">Admin</a>{% endif %}
+    <a href="{{ url_for('drive') }}" class="{% if active=='drive' %}on{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Drive</a>
+    <a href="{{ url_for('photos') }}" class="{% if active=='photos' %}on{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>Foto</a>
+    <a href="{{ url_for('upgrade_page') }}" class="{% if active=='upgrade' %}on{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Upgrade</a>
+    {% if nav_is_admin %}<a href="{{ url_for('admin_page') }}" class="{% if active=='admin' %}on{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>Admin</a>{% endif %}
   </nav>
   <span id="storageInfo" class="storage"></span>
   <span id="livepill" class="livepill hidden" title="Upload berjalan — klik untuk lihat"></span>
-  {% if nav_username %}<span class="storage" title="Login sebagai">{{ nav_username }}</span>{% endif %}
-  <a class="logout" href="{{ url_for('logout') }}">Keluar</a>
+  <div class="accwrap">
+    <button class="avatar" id="accBtn" title="{{ nav_display_name }}">{{ (nav_display_name or '?')[:1].upper() }}</button>
+    <div class="accdrop hidden" id="accDrop">
+      <div class="acchead">
+        <div class="avatar lg">{{ (nav_display_name or '?')[:1].upper() }}</div>
+        <div><div class="accname">{{ nav_display_name }}</div><div class="accuser">@{{ nav_username }}</div>{% if nav_is_pro %}<span class="probadge">⚡ PRO</span>{% endif %}</div>
+      </div>
+      <a class="accmi" id="accRename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Ubah nama tampilan</a>
+      <a class="accmi" href="{{ url_for('settings') }}#akun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Akun Telegram</a>
+      <div class="accgrp">Lainnya</div>
+      <a class="accmi" href="{{ url_for('activity') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Riwayat aktivitas</a>
+      <a class="accmi" href="{{ url_for('settings') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>Pengaturan</a>
+      <div class="accmi" id="accTheme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="8.5" cy="10" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r=".9" fill="currentColor" stroke="none"/><path d="M12 22a10 10 0 1 1 10-10c0 2.5-2 2.5-2 5a2 2 0 0 1-2 2h-2a2 2 0 0 0-2 2c0 1-1 1-2 1z"/></svg>Tema<span class="acctag" id="themeTag">{{ nav_themes[nav_theme].nama }}</span></div>
+      <div class="themesub hidden" id="themeSub">
+        {% for key, t in nav_themes.items() %}
+        <button class="themeopt{% if key==nav_theme %} on{% endif %}" data-theme="{{ key }}" data-nama="{{ t.nama }}"><span class="tdot" data-tdot="{{ key }}"></span>{{ t.nama }}</button>
+        {% endfor %}
+      </div>
+      {% if not nav_is_pro %}<a class="accmi" href="{{ url_for('upgrade_page') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Upgrade ke PRO</a>{% endif %}
+      <div class="accdiv"></div>
+      <a class="accmi" href="{{ url_for('logout') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>Keluar</a>
+    </div>
+  </div>
 </header>
 {% if not configured %}
-<div class="warnbar">Akun Telegram belum dikonfigurasi — tambahkan di halaman <a href="{{ url_for('settings') }}" style="color:#ffd98a">Pengaturan</a>. Web tetap bisa dibuka, tapi upload belum jalan.</div>
+<div class="warnbar">Akun Telegram belum dikonfigurasi — tambahkan di halaman <a href="{{ url_for('settings') }}#akun" style="color:#ffd98a">Pengaturan</a>. Web tetap bisa dibuka, tapi upload belum jalan.</div>
 {% endif %}
 {% endif %}
 <main class="wrap">
@@ -39,6 +58,34 @@
 </div>
 <script>var ON_DIRECT={{ 'true' if is_direct else 'false' }};</script>
 <script src="{{ url_for('static', filename='app.js') }}?v={{ asset_v }}"></script>
+<script>
+/* menu akun */
+(function(){
+  const btn=document.getElementById('accBtn'),drop=document.getElementById('accDrop');
+  if(!btn||!drop)return;
+  btn.addEventListener('click',e=>{e.stopPropagation();drop.classList.toggle('hidden')});
+  document.addEventListener('click',e=>{if(!drop.classList.contains('hidden')&&!e.target.closest('.accwrap'))drop.classList.add('hidden')});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')drop.classList.add('hidden')});
+  document.getElementById('accRename').addEventListener('click',async()=>{
+    const v=await askName('Nama tampilan',{{ nav_display_name|tojson }});
+    if(v===null||v==={{ nav_display_name|tojson }})return;
+    try{
+      const r=await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:v})});
+      if(r.ok)location.reload();else alert('Gagal menyimpan nama.');
+    }catch(e){alert('Gagal menyimpan nama.')}
+  });
+  const sub=document.getElementById('themeSub');
+  document.getElementById('accTheme').addEventListener('click',e=>{e.stopPropagation();sub.classList.toggle('hidden')});
+  sub.querySelectorAll('.themeopt').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();
+    const t=b.dataset.theme;
+    document.documentElement.dataset.theme=t;
+    sub.querySelectorAll('.themeopt').forEach(x=>x.classList.toggle('on',x===b));
+    document.getElementById('themeTag').textContent=b.dataset.nama;
+    try{await fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({theme:t})})}catch(e){}
+  }));
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
