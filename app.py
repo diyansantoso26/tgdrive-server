@@ -196,10 +196,38 @@ def ensure_local_copy(rec, creds=None):
     return p
 
 
+# ---------- tema ----------
+THEMES = {
+    'gelap':   {'nama': 'Gelap'},
+    'terang':  {'nama': 'Terang'},
+    'senja':   {'nama': 'Senja'},
+    'samudra': {'nama': 'Samudra'},
+    'hutan':   {'nama': 'Hutan'},
+}
+DEFAULT_THEME = 'gelap'
+
+
+def _user_theme(user_id):
+    t = (db.get_user_setting(user_id, 'theme', DEFAULT_THEME) or DEFAULT_THEME)
+    return t if t in THEMES else DEFAULT_THEME
+
+
 @app.context_processor
 def inject_user():
+    u = None
+    theme = DEFAULT_THEME
+    display_name = session.get('username')
+    if session.get('user_id'):
+        u = db.get_user(session['user_id'])
+        if u:
+            display_name = u.get('display_name') or u.get('username')
+            theme = _user_theme(u['id'])
     return {'nav_username': session.get('username'),
+            'nav_display_name': display_name,
             'nav_is_admin': session.get('role') == 'admin',
+            'nav_is_pro': is_pro(),
+            'nav_theme': theme,
+            'nav_themes': THEMES,
             'is_direct': _is_direct_host()}
 
 
@@ -1361,6 +1389,28 @@ def api_license_redeem():
     return jsonify({'ok': True, 'message': msg,
                     'expires_at': lic['expires_at'],
                     'nama': LICENSE_TIERS.get(lic['tier'], {}).get('nama', lic['tier'])})
+
+
+# ---------- profil (nama tampilan & tema) ----------
+
+@app.route('/api/profile', methods=['PUT'])
+@login_required
+def api_profile():
+    data = request.get_json(force=True, silent=True) or {}
+    changed = []
+    if 'display_name' in data:
+        name = (data['display_name'] or '').strip()[:40]
+        conn = db.get_db()
+        conn.execute('UPDATE users SET display_name=? WHERE id=?', (name or None, uid()))
+        conn.commit()
+        conn.close()
+        changed.append('nama')
+    if 'theme' in data and data['theme'] in THEMES:
+        db.set_user_setting(uid(), 'theme', data['theme'])
+        changed.append('tema')
+    if not changed:
+        return jsonify({'error': 'Tidak ada perubahan.'}), 400
+    return jsonify({'ok': True, 'changed': changed})
 
 
 # ---------- panel admin ----------
