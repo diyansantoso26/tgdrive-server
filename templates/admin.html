@@ -38,7 +38,42 @@
   <label>URL domain utama (untuk kembali dari jalur langsung)
     <input id="domainUrl" placeholder="https://drive.gtg.my.id" style="width:100%">
   </label>
+  <label>Durasi token pindah domain (detik, 10–600)
+    <input id="handoffTtl" type="number" min="10" max="600" value="90" style="width:100%">
+  </label>
+  <label>Nomor WhatsApp admin (untuk konfirmasi pembayaran, cth 6281234567890)
+    <input id="waNumber" placeholder="628..." style="width:100%">
+  </label>
   <button class="btn primary" onclick="saveSettings()">Simpan</button>
+</div>
+
+<h3>Harga Lisensi</h3>
+<div class="card">
+  <p class="muted" style="margin-bottom:10px">Harga tampil di halaman Upgrade. Kosongkan bila belum ditentukan (tampil "Hubungi admin").</p>
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <label style="flex:1;min-width:150px">PRO Bulanan (Rp)<input id="priceMonthly" placeholder="cth 25000" style="width:100%"></label>
+    <label style="flex:1;min-width:150px">PRO Tahunan (Rp)<input id="priceYearly" placeholder="cth 200000" style="width:100%"></label>
+    <label style="flex:1;min-width:150px">PRO Lifetime (Rp)<input id="priceLifetime" placeholder="cth 500000" style="width:100%"></label>
+  </div>
+  <button class="btn primary" onclick="saveSettings()" style="margin-top:8px">Simpan Harga</button>
+</div>
+
+<h3>Lisensi</h3>
+<div class="card">
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <select id="licTier">
+      <option value="pro_monthly">PRO Bulanan (30 hari)</option>
+      <option value="pro_yearly">PRO Tahunan (365 hari)</option>
+      <option value="pro_lifetime">PRO Lifetime</option>
+    </select>
+    <input id="licQuota" type="number" placeholder="Kuota MB (cth 204800)" style="width:180px">
+    <input id="licCount" type="number" min="1" max="50" value="1" style="width:90px" title="Jumlah kode">
+    <input id="licNote" placeholder="Catatan (cth: untuk Budi)" style="flex:1;min-width:150px">
+    <button class="btn primary" onclick="addLicense()">Buat Kode</button>
+  </div>
+  <p class="muted" style="font-size:.85rem">Kuota kosong = pakai default paket. Kuota user hanya naik saat redeem (tidak turun otomatis). Kode sekali pakai, bisa dicabut.</p>
+  <div id="licNew" style="margin:8px 0;font-size:.9rem"></div>
+  <table id="licTbl" style="width:100%;font-size:.85rem"><thead><tr><th>Kode</th><th>Paket</th><th>Status</th><th>Dipakai</th><th>Kedaluwarsa</th><th>Aksi</th></tr></thead><tbody></tbody></table>
 </div>
 
 <h3>APK</h3>
@@ -98,7 +133,8 @@ async function setQuota(id,cur){const v=prompt('Kuota MB baru:',cur);if(v===null
 async function delUser(id,name){if(!confirm('Hapus "'+name+'" BESERTA SEMUA FILE & BOTNYA?'))return;await j('/api/admin/users/'+id,{method:'DELETE'});loadUsers();loadStats();}
 async function loadInv(){
   const d=await j('/api/admin/invites');
-  $('#regMode').value=d.registration_mode;$('#directUrl').value=d.direct_url||'';$('#domainUrl').value=d.domain_url||'';
+  $('#regMode').value=d.registration_mode;$('#directUrl').value=d.direct_url||'';$('#domainUrl').value=d.domain_url||'';$('#handoffTtl').value=d.handoff_token_ttl||90;$('#waNumber').value=d.wa_number||'';
+  $('#priceMonthly').value=(d.prices&&d.prices.license_price_monthly)||'';$('#priceYearly').value=(d.prices&&d.prices.license_price_yearly)||'';$('#priceLifetime').value=(d.prices&&d.prices.license_price_lifetime)||'';
   const tb=$('#invTbl tbody');tb.innerHTML='';
   d.invites.forEach(c=>{
     const tr=document.createElement('tr');
@@ -118,7 +154,8 @@ async function delInv(id){await j('/api/admin/invites/'+id,{method:'DELETE'});lo
 async function togInv(id,a){await j('/api/admin/invites/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!!a})});loadInv();}
 async function saveSettings(){
   await j('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({registration_mode:$('#regMode').value,direct_url:$('#directUrl').value,domain_url:$('#domainUrl').value})});
+    body:JSON.stringify({registration_mode:$('#regMode').value,direct_url:$('#directUrl').value,domain_url:$('#domainUrl').value,handoff_token_ttl:$('#handoffTtl').value,wa_number:$('#waNumber').value,
+      license_price_monthly:$('#priceMonthly').value,license_price_yearly:$('#priceYearly').value,license_price_lifetime:$('#priceLifetime').value})});
   alert('Tersimpan');
 }
 async function saveApk(){
@@ -127,7 +164,28 @@ async function saveApk(){
       win_version_code:$('#winCode').value,win_version_name:$('#winName').value,win_url:$('#winUrl').value})});
   alert('Versi tersimpan');
 }
-loadStats();loadUsers();loadInv();
+async function loadLic(){
+  const d=await j('/api/admin/licenses');
+  const tb=$('#licTbl tbody');tb.innerHTML='';
+  d.licenses.forEach(c=>{
+    const tr=document.createElement('tr');
+    const st=c.status!=='active'?'⛔ dicabut':(c.redeemed_by?('✅ dipakai'+(c.redeemed_username?' '+esc(c.redeemed_username):'')):'— belum dipakai');
+    const exp=c.expires_at?c.expires_at.slice(0,10):'selamanya';
+    tr.innerHTML=`<td><code>${esc(c.code)}</code></td><td>${esc(c.nama||c.tier)}</td><td>${st}</td><td>${c.redeemed_at?c.redeemed_at.slice(0,10):'—'}</td><td>${exp}</td>
+      <td><button class="btn sm" onclick="togLic(${c.id},${c.status==='active'?0:1})">${c.status==='active'?'Cabut':'Aktifkan'}</button>
+      <button class="btn sm danger" onclick="delLic(${c.id})">Hapus</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+async function addLicense(){
+  const d=await j('/api/admin/licenses',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tier:$('#licTier').value,quota_mb:$('#licQuota').value,count:$('#licCount').value,note:$('#licNote').value})});
+  $('#licNew').innerHTML='Kode baru: '+d.codes.map(c=>'<code>'+esc(c)+'</code>').join(' ');
+  $('#licNote').value='';loadLic();
+}
+async function togLic(id,revoke){await j('/api/admin/licenses/'+id+'/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revoked:!!revoke})});loadLic();}
+async function delLic(id){if(!confirm('Hapus kode lisensi ini?'))return;await j('/api/admin/licenses/'+id,{method:'DELETE'});loadLic();}
+loadStats();loadUsers();loadInv();loadLic();
 </script>
 <style>
 .tbl{width:100%;border-collapse:collapse}.tbl th,.tbl td{padding:8px;border-bottom:1px solid var(--line,#333);text-align:left;font-size:14px}
