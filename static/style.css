@@ -420,9 +420,11 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .accmi.disabled{opacity:.35;pointer-events:none}
 /* mobile: ikon baris bawah lebih kecil agar muat sebaris */
 @media(max-width:480px){
-  .tools.toolbar1{gap:4px}
-  .tools.toolbar1 .icobtn{width:34px;height:34px;font-size:1.05rem;border-radius:10px}
-  .tools.toolbar1 .explnav button{width:34px;height:34px;font-size:1rem}
+  .tools.toolbar1{gap:3px;overflow-x:auto;scrollbar-width:none}
+  .tools.toolbar1::-webkit-scrollbar{display:none}
+  .tools.toolbar1 .icobtn{width:32px;height:32px;min-width:32px;font-size:1rem;border-radius:9px}
+  .tools.toolbar1 .explnav{margin-right:0}
+  .tools.toolbar1 .explnav button{width:32px;height:32px;font-size:.95rem}
   .tools.toolbar-top{gap:6px}
   .tools.toolbar-top .crumbs{font-size:.74rem}
 }

@@ -1234,8 +1234,8 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   if(sClose)sClose.onclick=searchCloseFn;
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sExp&&!sExp.classList.contains('hidden'))searchCloseFn()});
   /* menu ⋯: navigasi & aksi */
-  const ovR=document.getElementById('ovRefresh');
-  if(ovR)ovR.onclick=()=>{document.getElementById('ovDrop').classList.add('hidden');loadFolders();load();loadStorage()};
+  const ovR=document.getElementById('refreshBtnT');
+  if(ovR)ovR.onclick=()=>{loadFolders();load();loadStorage()};
   /* mode pilih banyak — via tahan lama (HP) atau ⋯ → Pilih banyak (desktop) */
   const ovSel=document.getElementById('ovSelBtn');
   if(ovSel)ovSel.onclick=()=>sel.mode?exitSelMode():enterSelMode();
