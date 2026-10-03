@@ -97,6 +97,7 @@ function confirmDlg(o){o=o||{};return new Promise(res=>{
   m.querySelector('#cdNo').onclick=()=>done(false);
   m.querySelector('#cdYes').onclick=()=>done(true);
   m.querySelector('#cdYes').focus();
+  m.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();done(false)}};
 })}
 /* render markdown sederhana + aman (HTML di-escape dulu) */
 function mdRender(src){
@@ -168,7 +169,10 @@ function openEditor(o){
     wrap.remove();
   }
   q('#edBack').onclick=close;
-  document.addEventListener('keydown',function esc2(e){if(e.key==='Escape'&&document.body.contains(wrap)){close();document.removeEventListener('keydown',esc2)}});
+  document.addEventListener('keydown',function esc2(e){
+    if(e.key!=='Escape'||!document.body.contains(wrap))return;
+    if(document.querySelector('.modal'))return; // dialog lain sedang terbuka
+    close();document.removeEventListener('keydown',esc2)});
   function fixName(n){
     n=(n||'').trim()||'tanpa-judul';
     return /\.(txt|md)$/i.test(n)?n:n+'.'+ext;
@@ -617,7 +621,7 @@ function initDrive(){
         if(await confirmDlg({ico:'🗑',title:'Hapus folder?',msg:'"'+name+'" — file di dalamnya dipindah ke tong sampah.',yes:'Ya, hapus',danger:true})){
           const r=await api('/api/folders/'+fid,{method:'DELETE'});
           await loadFolders();S.folder='root';load();
-          if(r.trashed_files)notify('Folder dihapus. '+r.trashed_files+' file dipindah ke tong sampah.','ok');
+          notify('Folder "'+name+'" dihapus.'+(r.trashed_files?' '+r.trashed_files+' file dipindah ke tong sampah.':''),'ok');
         }
       }
     }catch(e){notify(e.message,'err')}
