@@ -122,6 +122,29 @@ CREATE TABLE IF NOT EXISTS user_settings (
     value TEXT NOT NULL,
     PRIMARY KEY (user_id, key)
 );
+CREATE TABLE IF NOT EXISTS login_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_login_tokens_hash ON login_tokens(token_hash);
+CREATE TABLE IF NOT EXISTS licenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    tier TEXT NOT NULL,
+    quota_mb INTEGER NOT NULL DEFAULT 0,
+    duration_days INTEGER,
+    created_at TEXT NOT NULL,
+    created_by INTEGER,
+    redeemed_by INTEGER,
+    redeemed_at TEXT,
+    expires_at TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    note TEXT
+);
 """
 
 
@@ -926,6 +949,155 @@ def delete_invite_code(cid):
     conn.execute('DELETE FROM invite_codes WHERE id=?', (cid,))
     conn.commit()
     conn.close()
+
+
+# ---------- token handoff login antar-domain ----------
+
+def create_login_token(user_id, ttl_seconds=90):
+    """Buat token login sekali pakai untuk pindah domain tanpa login ulang.
+    Kembalikan token plaintext (di DB hanya disimpan hash-nya)."""
+    import secrets
+    import hashlib
+    token = secrets.token_urlsafe(32)
+    th = hashlib.sha256(token.encode()).hexdigest()
+    now = datetime.now()
+    exp = now + timedelta(seconds=max(10, min(600, int(ttl_seconds or 90))))
+    conn = get_db()
+    # janitor: buang token yang sudah kedaluwarsa
+    conn.execute('DELETE FROM login_tokens WHERE expires_at <= ?', (now.isoformat(timespec='seconds'),))
+    conn.execute(
+        'INSERT INTO login_tokens (token_hash, user_id, created_at, expires_at) VALUES (?,?,?,?)',
+        (th, user_id, now.isoformat(timespec='seconds'), exp.isoformat(timespec='seconds')))
+    conn.commit()
+    conn.close()
+    return token
+
+
+def consume_login_token(token):
+    """Validasi & hanguskan token. Kembalikan user_id atau None bila tidak valid."""
+    import hashlib
+    th = hashlib.sha256((token or '').encode()).hexdigest()
+    now = datetime.now().isoformat(timespec='seconds')
+    conn = get_db()
+    r = conn.execute(
+        'SELECT id, user_id FROM login_tokens WHERE token_hash=? AND used=0 AND expires_at > ?',
+        (th, now)).fetchone()
+    if not r:
+        conn.close()
+        return None
+    conn.execute('UPDATE login_tokens SET used=1 WHERE id=?', (r['id'],))
+    conn.commit()
+    conn.close()
+    return r['user_id']
+
+
+# ---------- lisensi ----------
+
+def _gen_license_code():
+    import secrets
+    return 'TGDRIVE-' + secrets.token_hex(2).upper() + '-' + secrets.token_hex(2).upper()
+
+
+def create_license(tier, quota_mb=0, duration_days=None, created_by=None, note=''):
+    """Buat satu kode lisensi. Kembalikan code."""
+    conn = get_db()
+    for _ in range(5):
+        code = _gen_license_code()
+        try:
+            conn.execute(
+                'INSERT INTO licenses (code, tier, quota_mb, duration_days, created_at, created_by, note)'
+                ' VALUES (?,?,?,?,?,?,?)',
+                (code, tier, int(quota_mb or 0),
+                 None if duration_days is None else int(duration_days),
+                 datetime.now().isoformat(timespec='seconds'), created_by, note or ''))
+            conn.commit()
+            conn.close()
+            return code
+        except sqlite3.IntegrityError:
+            continue
+    conn.close()
+    return None
+
+
+def list_licenses():
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT l.*, u.username AS redeemed_username FROM licenses l'
+        ' LEFT JOIN users u ON u.id = l.redeemed_by ORDER BY l.id DESC').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_license_by_code(code):
+    conn = get_db()
+    r = conn.execute('SELECT * FROM licenses WHERE code=?', ((code or '').strip().upper(),)).fetchone()
+    conn.close()
+    return dict(r) if r else None
+
+
+def redeem_license(code, user_id):
+    """Tukar kode lisensi. Kembalikan (ok, pesan, lisensi)."""
+    code = (code or '').strip().upper()
+    conn = get_db()
+    r = conn.execute('SELECT * FROM licenses WHERE code=?', (code,)).fetchone()
+    if not r:
+        conn.close()
+        return False, 'Kode tidak ditemukan.', None
+    lic = dict(r)
+    if lic['status'] != 'active':
+        conn.close()
+        return False, 'Kode lisensi ini sudah dicabut.', None
+    if lic['redeemed_by']:
+        conn.close()
+        return False, 'Kode ini sudah dipakai.', None
+    now = datetime.now()
+    exp = None
+    if lic['duration_days']:
+        exp = (now + timedelta(days=int(lic['duration_days']))).isoformat(timespec='seconds')
+    conn.execute('UPDATE licenses SET redeemed_by=?, redeemed_at=?, expires_at=? WHERE id=?',
+                 (user_id, now.isoformat(timespec='seconds'), exp, lic['id']))
+    # kuota user hanya naik (tidak pernah turun otomatis)
+    if lic['quota_mb']:
+        u = conn.execute('SELECT quota_mb FROM users WHERE id=?', (user_id,)).fetchone()
+        if u and (u['quota_mb'] or 0) < lic['quota_mb']:
+            conn.execute('UPDATE users SET quota_mb=? WHERE id=?', (lic['quota_mb'], user_id))
+    conn.commit()
+    conn.close()
+    lic['redeemed_by'] = user_id
+    lic['expires_at'] = exp
+    return True, 'Lisensi aktif!', lic
+
+
+def set_license_status(lid, status):
+    conn = get_db()
+    conn.execute('UPDATE licenses SET status=? WHERE id=?', (status, lid))
+    conn.commit()
+    conn.close()
+
+
+def delete_license(lid):
+    conn = get_db()
+    conn.execute('DELETE FROM licenses WHERE id=?', (lid,))
+    conn.commit()
+    conn.close()
+
+
+def get_active_license(user_id):
+    """Lisensi aktif (belum dicabut & belum kedaluwarsa) milik user, atau None."""
+    if not user_id:
+        return None
+    now = datetime.now().isoformat(timespec='seconds')
+    conn = get_db()
+    r = conn.execute(
+        "SELECT * FROM licenses WHERE redeemed_by=? AND status='active'"
+        " AND (expires_at IS NULL OR expires_at > ?) ORDER BY id DESC LIMIT 1",
+        (user_id, now)).fetchone()
+    conn.close()
+    return dict(r) if r else None
+
+
+def has_active_license(user_id):
+    return get_active_license(user_id) is not None
 
 
 # ---------- user settings ----------
