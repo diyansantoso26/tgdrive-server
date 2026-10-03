@@ -210,6 +210,10 @@ def init_db():
         conn.execute('ALTER TABLE files ADD COLUMN trashed_at TEXT')
         conn.execute("UPDATE files SET trashed_at=? WHERE trashed=1 AND trashed_at IS NULL",
                      (datetime.now().isoformat(timespec='seconds'),))
+    # migrasi: idempotency upload chunked
+    for _col, _typ in (('client_key', 'TEXT'), ('result_file_id', 'INTEGER')):
+        if _col not in _table_cols(conn, 'upload_sessions'):
+            conn.execute('ALTER TABLE upload_sessions ADD COLUMN %s %s' % (_col, _typ))
     conn.commit()
     # buat akun admin bila belum ada (dari password lama di .env)
     now = datetime.now().isoformat(timespec='seconds')
@@ -1154,7 +1158,8 @@ def set_user_setting(user_id, key, value):
 # ---------- upload chunked / resume ----------
 
 def create_upload_session(sid, user_id, file_name, file_size, chunk_size, total_chunks,
-                           tmp_path, folder_id=None, overwrite_id=None, ttl_hours=24):
+                           tmp_path, folder_id=None, overwrite_id=None, ttl_hours=24,
+                           client_key=None):
     import json as _json
     from datetime import datetime, timedelta, timezone
     now = datetime.now(timezone.utc).isoformat()
@@ -1163,11 +1168,21 @@ def create_upload_session(sid, user_id, file_name, file_size, chunk_size, total_
     conn.execute(
         'INSERT INTO upload_sessions (id, user_id, file_name, file_size, chunk_size,'
         ' total_chunks, received, tmp_path, folder_id, overwrite_id, status,'
-        ' created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?)',
+        ' created_at, expires_at, client_key) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?,?)',
         (sid, user_id, file_name, file_size, chunk_size, total_chunks, '[]',
-         tmp_path, folder_id, overwrite_id, 'active', now, exp))
+         tmp_path, folder_id, overwrite_id, 'active', now, exp, client_key))
     conn.commit()
     conn.close()
+
+
+def get_upload_session_by_client_key(client_key, user_id):
+    """Idempotency: sesi aktif dengan client_key yang sama (retry init)."""
+    conn = get_db()
+    r = conn.execute("SELECT * FROM upload_sessions WHERE client_key=? AND user_id=?"
+                     " AND status='active' ORDER BY created_at DESC LIMIT 1",
+                     (client_key, user_id)).fetchone()
+    conn.close()
+    return dict(r) if r else None
 
 
 def get_upload_session(sid, user_id=None):
@@ -1201,9 +1216,13 @@ def add_upload_chunk(sid, idx):
     return len(rec)
 
 
-def set_upload_session_status(sid, status):
+def set_upload_session_status(sid, status, result_file_id=None):
     conn = get_db()
-    conn.execute('UPDATE upload_sessions SET status=? WHERE id=?', (status, sid))
+    if result_file_id is not None:
+        conn.execute('UPDATE upload_sessions SET status=?, result_file_id=? WHERE id=?',
+                     (status, result_file_id, sid))
+    else:
+        conn.execute('UPDATE upload_sessions SET status=? WHERE id=?', (status, sid))
     conn.commit()
     conn.close()
 
@@ -1230,7 +1249,7 @@ def cleanup_upload_sessions():
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db()
     olds = conn.execute('SELECT id, tmp_path FROM upload_sessions'
-                        " WHERE expires_at<? AND status='active'", (now,)).fetchall()
+                        " WHERE expires_at<? AND status IN ('active','done')", (now,)).fetchall()
     n = 0
     for o in olds:
         try:
@@ -1238,7 +1257,7 @@ def cleanup_upload_sessions():
                 _os.remove(o['tmp_path'])
         except OSError:
             pass
-        conn.execute("UPDATE upload_sessions SET status='cancelled' WHERE id=?", (o['id'],))
+        conn.execute('DELETE FROM upload_sessions WHERE id=?', (o['id'],))
         n += 1
     conn.commit()
     conn.close()
