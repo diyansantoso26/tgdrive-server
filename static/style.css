@@ -1,12 +1,21 @@
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0f141b;--bg2:#161d27;--card:#1a2230;--ink:#e8edf4;--muted:#8b96a8;--line:#263041;--acc:#2f9dff;--danger:#ff5d5d;--radius:12px}
+:root{--bg:#0f141b;--bg2:#161d27;--card:#1a2230;--ink:#e8edf4;--muted:#8b96a8;--line:#263041;--acc:#2f9dff;--danger:#ff5d5d;--radius:12px;--topbar:rgba(15,20,27,.92);--dropbg:#0f141bd9;--onacc:#fff}
+/* Tema: terang */
+[data-theme="terang"]{--bg:#f4f6fa;--bg2:#ffffff;--card:#ffffff;--ink:#1a2330;--muted:#68768c;--line:#e2e8f0;--acc:#1f7aec;--danger:#d64545;--topbar:rgba(255,255,255,.92);--dropbg:#f4f6fad9;--onacc:#fff}
+html[data-theme="terang"]{color-scheme:light}
+/* Tema: senja */
+[data-theme="senja"]{--bg:#171009;--bg2:#211711;--card:#2a1e14;--ink:#f5e9d8;--muted:#a89880;--line:#3a2c1e;--acc:#ff9f43;--danger:#ff6b5d;--topbar:rgba(23,16,9,.92);--dropbg:#171009d9;--onacc:#1a1206}
+/* Tema: samudra */
+[data-theme="samudra"]{--bg:#081420;--bg2:#0d1e30;--card:#122639;--ink:#e0f0fa;--muted:#7d99b5;--line:#1e3a55;--acc:#22d3ee;--danger:#ff5d7a;--topbar:rgba(8,20,32,.92);--dropbg:#081420d9;--onacc:#06202a}
+/* Tema: hutan */
+[data-theme="hutan"]{--bg:#0c1510;--bg2:#12211a;--card:#16281f;--ink:#e6f2ea;--muted:#87a294;--line:#22392e;--acc:#34d399;--danger:#ff6b6b;--topbar:rgba(12,21,16,.92);--dropbg:#0c1510d9;--onacc:#06231a}
 html{color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;min-height:100vh}
 a{color:var(--acc)}
 .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
 
 /* topbar */
-.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:22px;padding:0 20px;height:58px;background:rgba(15,20,27,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:22px;padding:0 20px;height:58px;background:var(--topbar);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .brand{font-weight:800;font-size:1.25rem;text-decoration:none;color:var(--ink)}
 .brand span{color:var(--acc)}
 .topbar nav{display:flex;gap:6px}
@@ -59,7 +68,7 @@ label.btn{cursor:pointer}
 .folderitem .thumb{font-size:1.8rem}
 
 /* drop & queue */
-.drophint{position:fixed;inset:18px;border:3px dashed var(--acc);border-radius:18px;background:#0f141bd9;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;z-index:60;pointer-events:none}
+.drophint{position:fixed;inset:18px;border:3px dashed var(--acc);border-radius:18px;background:var(--dropbg);display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;z-index:60;pointer-events:none}
 .hidden{display:none!important}
 .queue{position:fixed;right:18px;bottom:18px;width:330px;max-height:50vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;z-index:60;box-shadow:0 18px 50px #000a}
 .qitem{padding:10px 14px;border-bottom:1px solid var(--line);font-size:.82rem}
@@ -150,3 +159,54 @@ label.btn{cursor:pointer}
 .lockrow:last-child{border-bottom:none}
 .lockrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .locknote{font-size:.8rem;color:var(--muted);padding:6px 2px}
+
+/* ---- menu akun ---- */
+.accwrap{position:relative;margin-left:auto}
+.storage{margin-left:0}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--acc);color:var(--onacc);border:0;
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;cursor:pointer;flex:none}
+.avatar.lg{width:44px;height:44px;font-size:19px}
+.accdrop{position:absolute;top:44px;right:0;width:264px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;box-shadow:0 12px 32px #0007;overflow:hidden;z-index:70}
+.acchead{display:flex;gap:11px;align-items:center;padding:13px 14px;border-bottom:1px solid var(--line)}
+.accname{font-weight:700;font-size:.95rem}
+.accuser{font-size:.78rem;color:var(--muted)}
+.probadge{display:inline-block;font-size:.68rem;font-weight:800;background:var(--acc);color:var(--onacc);
+  border-radius:20px;padding:2px 9px;margin-top:4px}
+.accmi{display:flex;gap:11px;align-items:center;padding:10px 14px;color:var(--ink);text-decoration:none;
+  font-size:.88rem;cursor:pointer}
+.accmi:hover{background:var(--bg2)}
+.accmi svg{width:17px;height:17px;flex:none;color:var(--muted)}
+.accgrp{font-size:.66rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+  padding:9px 14px 3px;font-weight:700}
+.accdiv{border-top:1px solid var(--line)}
+.acctag{margin-left:auto;font-size:.72rem;color:var(--muted);background:var(--bg2);padding:2px 8px;border-radius:10px}
+.themesub{border-top:1px dashed var(--line);padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.themeopt{display:flex;align-items:center;gap:8px;background:none;border:1px solid transparent;color:var(--ink);
+  border-radius:8px;padding:7px 9px;font-size:.82rem;cursor:pointer;text-align:left}
+.themeopt:hover{background:var(--bg2)}
+.themeopt.on{border-color:var(--acc)}
+.tdot{width:14px;height:14px;border-radius:50%;flex:none;border:1px solid #0004}
+.tdot[data-tdot="gelap"]{background:#2f9dff}
+.tdot[data-tdot="terang"]{background:#1f7aec}
+.tdot[data-tdot="senja"]{background:#ff9f43}
+.tdot[data-tdot="samudra"]{background:#22d3ee}
+.tdot[data-tdot="hutan"]{background:#34d399}
+/* ikon nav */
+.topbar nav a{display:flex;align-items:center;gap:7px}
+.topbar nav a svg{width:15px;height:15px}
+/* toast undo */
+.utoast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:80;display:flex;gap:12px;align-items:center;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 16px;font-size:.88rem;
+  box-shadow:0 10px 28px #0008;max-width:92vw}
+.utoast button{background:none;border:0;color:var(--acc);font-weight:700;font-size:.88rem;cursor:pointer;white-space:nowrap}
+.utoast button:hover{text-decoration:underline}
+/* tombol toolbar */
+.tbtn.on{border-color:var(--acc);color:var(--ink)}
+.tbtn:disabled{opacity:.35;cursor:default}
+/* menu overflow (⋯) */
+.ovwrap{position:relative}
+.ovdrop{position:absolute;top:40px;right:0;min-width:200px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 32px #0007;z-index:70;overflow:hidden;padding:4px}
+.ovdrop .accmi{border-radius:8px}
+@media(max-width:720px){.topbar{gap:12px;padding:0 12px}.topbar nav a{padding:8px 9px;font-size:.82rem}}
