@@ -1312,11 +1312,18 @@ function initPhotos(){
     h+=S.labels.map(l=>'<button class="lchip'+(String(S.labelId)===String(l.id)?' on':'')+'" data-l="'+l.id+'"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.icon)+' '+esc(l.name)+'</button>').join('');
     h+='<button class="lchip add" data-l="__add">＋ Label</button>';
     c.innerHTML=h;
-    c.querySelectorAll('.lchip').forEach(b=>b.onclick=()=>{
-      const v=b.dataset.l;
-      if(v==='__add'){labelDialog();return}
-      S.fav=(v==='__fav');S.labelId=(v&&v!=='__fav')?v:null;
-      exitPSelMode();renderChips();load();
+    c.querySelectorAll('.lchip').forEach(b=>{
+      const v=b.dataset.l;let lpFired=false,t=null;
+      b.onclick=()=>{
+        if(lpFired){lpFired=false;return} // habis tahan lama: jangan ikut kepencet
+        if(v==='__add'){labelDialog();return}
+        S.fav=(v==='__fav');S.labelId=(v&&v!=='__fav')?v:null;
+        exitPSelMode();renderChips();load();
+      };
+      if(v&&v!=='__fav'&&v!=='__add'){ // tahan lama pada chip = kelola label
+        b.addEventListener('pointerdown',()=>{t=setTimeout(()=>{lpFired=true;manageLabels()},500)});
+        ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(t)));
+      }
     });
   }
   function labelDialog(ex){
@@ -1326,13 +1333,14 @@ function initPhotos(){
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="lbColors">'
       +LBL_COLORS.map(c2=>'<button data-c="'+c2+'" style="width:32px;height:32px;border-radius:50%;background:'+c2+';border:3px solid '+((ex.color||'#4f8cff')===c2?'#fff':'transparent')+';cursor:pointer" aria-label="'+c2+'"></button>').join('')+'</div>'
       +'<input id="lbIcon" maxlength="8" placeholder="Ikon emoji (opsional)" value="'+esc(ex.icon||'')+'" style="width:160px">'
-      +'<div class="row"><button class="btn" id="lbCancel">Batal</button>'
+      +'<div class="row"><button class="btn" id="lbCancel">Batal</button><button class="btn ghost" id="lbManage">⚙ Kelola</button>'
       +(ex.id?'<button class="btn danger" id="lbDel">Hapus</button>':'')
       +'<button class="btn primary" id="lbSave">Simpan</button></div>');
     let color=ex.color||'#4f8cff';
     m.querySelectorAll('#lbColors button').forEach(b=>b.onclick=()=>{color=b.dataset.c;
       m.querySelectorAll('#lbColors button').forEach(x=>x.style.borderColor=x===b?'#fff':'transparent')});
     m.querySelector('#lbCancel').onclick=()=>m.remove();
+    m.querySelector('#lbManage').onclick=()=>{m.remove();manageLabels()};
     const del=m.querySelector('#lbDel');
     if(del)del.onclick=async()=>{
       if(!await confirmDlg({ico:'🏷',title:'Hapus label?',msg:'"'+ex.name+'" dihapus. Foto-fotonya TIDAK ikut terhapus.',yes:'Ya, hapus',danger:true}))return;
@@ -1497,7 +1505,6 @@ function initPhotos(){
   }
 
   /* ---------- aksi massal ---------- */
-  document.getElementById('pselModeBtn').onclick=()=>sel.mode?exitPSelMode():enterPSelMode();
   document.getElementById('pselCancelBtn').onclick=exitPSelMode;
   document.getElementById('pselAllBtn').onclick=()=>{
     sel.ids=new Set(S.files.map(f=>f.id));syncPSelUI();
@@ -1534,8 +1541,35 @@ function initPhotos(){
     }catch(e){notify('Gagal: '+e.message,'err')}
   };
 
-  document.getElementById('psort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;exitPSelMode();load()};
-  document.getElementById('labManageBtn').onclick=manageLabels;
-  document.querySelectorAll('#pview button').forEach(b=>b.onclick=()=>{S.view=b.dataset.v;document.querySelectorAll('#pview button').forEach(x=>x.classList.toggle('on',x===b));load()});
+  /* ---------- sort & view via ikon ---------- */
+  const SORTS=[['taken-desc','Terbaru dulu'],['taken-asc','Terlama dulu'],['date-desc','Upload terbaru'],['size-desc','Ukuran terbesar'],['size-asc','Ukuran terkecil'],['name-asc','Nama A–Z']];
+  const sortKey=()=>S.sort+'-'+S.order;
+  function closeSortMenu(){const m=document.getElementById('sortMenu');if(m)m.remove()}
+  document.getElementById('psortBtn').onclick=e=>{
+    e.stopPropagation();closeSortMenu();
+    const m=document.createElement('div');m.className='popmenu';m.id='sortMenu';
+    m.innerHTML='<div class="pmtitle">Urutkan</div>'+SORTS.map(s=>'<button data-v="'+s[0]+'" class="'+(sortKey()===s[0]?'on':'')+'">'+(sortKey()===s[0]?'✓ ':'')+s[1]+'</button>').join('');
+    document.body.appendChild(m);
+    const r=e.currentTarget.getBoundingClientRect();
+    m.style.top=(r.bottom+6)+'px';m.style.right=Math.max(8,window.innerWidth-r.right)+'px';
+    m.querySelectorAll('button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const[s,o]=b.dataset.v.split('-');S.sort=s;S.order=o;closeSortMenu();exitPSelMode();load()});
+    setTimeout(()=>document.addEventListener('click',closeSortMenu,{once:true}),0);
+  };
+  const VIEWS=['grid','compact','list'],VICON={grid:'▦',compact:'▤',list:'☰'},VNAME={grid:'Grid nyaman',compact:'Grid rapat',list:'Daftar'};
+  const pvb=document.getElementById('pviewBtn');
+  pvb.textContent=VICON[S.view]||'▦';pvb.title='Tampilan: '+(VNAME[S.view]||VNAME.grid);
+  pvb.onclick=()=>{S.view=VIEWS[(VIEWS.indexOf(S.view)+1)%VIEWS.length];pvb.textContent=VICON[S.view];pvb.title='Tampilan: '+VNAME[S.view];load()};
+  /* ---------- auto-hide toolbar foto saat scroll ---------- */
+  const fbarWrap=document.getElementById('fbarWrap');
+  let barH=0,lastST=0;
+  function measureBar(){barH=fbarWrap.scrollHeight;if(fbarWrap.style.maxHeight!=='0px')fbarWrap.style.maxHeight=barH+'px'}
+  wrap.addEventListener('scroll',()=>{
+    const st=wrap.scrollTop,dy=st-lastST;lastST=st;
+    if(Math.abs(dy)<6||!barH)return;
+    if(dy>0&&st>140)fbarWrap.style.maxHeight='0px';
+    else if(dy<0||st<=140)fbarWrap.style.maxHeight=barH+'px';
+  },{passive:true});
+  window.addEventListener('resize',measureBar);
+  requestAnimationFrame(measureBar);
   loadLabels().then(load);
 }
