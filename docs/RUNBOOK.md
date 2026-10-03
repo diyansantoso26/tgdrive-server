@@ -1,0 +1,87 @@
+# Runbook Operasional TG Drive
+
+Catatan penting agar tidak lupa. Bahasa Indonesia.
+
+## Daftar repo GitHub
+
+| Repo | Isi |
+|---|---|
+| `tgdrive-server` | Source server Flask + `install.sh` + `migrate.sh` (repo ini) |
+| `tgdrive-apk` | Source + rilis APK Android |
+| `tgdrive-win` | Source + rilis aplikasi Windows (Tauri) |
+
+## Install VPS baru
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/diyansantoso26/tgdrive-server/main/install.sh -o install.sh
+sudo bash install.sh --domain drive.contoh.id
+```
+
+Lalu isi `TG_BOT_TOKEN` & `TG_CHANNEL_ID` di `/home/tgdrive/app/.env`, restart service,
+arahkan DNS, pasang SSL (`certbot --nginx -d domain`).
+
+## Migrasi VPS lama → baru
+
+```bash
+# VPS LAMA
+sudo ./migrate.sh backup            # → tgdrive-backup-YYYYMMDD-HHMMSS.tar.gz
+scp tgdrive-backup-*.tar.gz root@IP-BARU:/root/
+
+# VPS BARU
+sudo bash install.sh --domain drive.contoh.id
+sudo ./migrate.sh restore /root/tgdrive-backup-*.tar.gz
+# → arahkan DNS ke IP baru
+```
+
+## Rilis APK Android baru
+
+```bash
+cd ~/workspace/tgdrive-apk
+# 1. (Bila perlu) hapus android:usesCleartextTraffic dari AndroidManifest.xml
+# 2. Build & sign — password keystore DIMINTA ke pemilik, dipakai sekali via env,
+#    TIDAK disimpan di file mana pun:
+VER_CODE=<n> VER_NAME=<x.y> TGDRIVE_KS_PASS='<password>' ./build-apk.sh
+# 3. Upload ke VPS:
+scp -F ~/.ssh/config_vps build/manual/tgdrive.apk vps:/tmp/tgdrive.apk
+ssh -F ~/.ssh/config_vps vps "sudo cp /tmp/tgdrive.apk /home/tgdrive/app/apk/tgdrive.apk && sudo chown tgdrive:tgdrive /home/tgdrive/app/apk/tgdrive.apk"
+# 4. Daftarkan versi di admin (panel /admin → Aplikasi Android) atau via DB:
+#    apk_version_code=<n>, apk_version_name=<x.y>
+# 5. Verifikasi: curl https://domain/apk/tgdrive.apk → cek versionCode via aapt
+# 6. Rilis GitHub: upload ke releases/ di repo tgdrive-apk + buat release tag
+```
+
+## Rilis aplikasi Windows baru
+
+```bash
+cd ~/workspace/tgdrive-win
+# 1. Update kode, lalu push ke GitHub:
+python3 publish.py
+# 2. Trigger build (GitHub Actions, runner Windows):
+python3 -c "... workflow_dispatch ..."
+# 3. Tunggu selesai → download artifact → upload .exe ke /home/tgdrive/app/apk/
+# 4. Daftarkan versi di admin (panel /admin → Aplikasi Windows):
+#    win_version_code, win_version_name, win_url=/apk/nama-file.exe
+# 5. Verifikasi download HTTP 200 + /api/app-version
+# 6. Rilis GitHub: file .exe ke releases/ + buat release tag
+```
+
+## Aturan yang tidak boleh dilanggar
+
+1. **Jangan ganggu tetangga** — setiap kerja di VPS, cek dulu & sesudahnya:
+   aaPanel/nginx, Hermes, 9router, cloudflared, telegram-bot-api, wa.gtg.my.id, gtg.my.id.
+2. **Kredensial tidak disimpan** — password keystore, token bot, API key:
+   dipakai sekali secara transient, tidak ditulis di chat/file/memory.
+3. **Upload via /tmp** — user `gtg` tidak bisa tulis langsung ke `/home/tgdrive/app`;
+   upload ke `/tmp` dulu lalu `sudo cp` + `chown tgdrive:tgdrive`.
+4. **SSH VPS** selalu pakai `ssh -F ~/.ssh/config_vps vps` (wajib lewat proxy).
+5. **Rahasia tidak di-commit** — `.env`, `*.db`, `apk/`, keystore ada di `.gitignore`.
+6. **Nginx aaPanel** di-reload pakai `/etc/init.d/nginx reload` (bukan systemctl).
+
+## Perintah cepat
+
+```bash
+sudo systemctl status tgdrive        # status service
+sudo systemctl restart tgdrive       # restart
+sudo journalctl -u tgdrive -f        # log
+sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
+```
