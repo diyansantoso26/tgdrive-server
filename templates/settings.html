@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% set active='settings' %}
+{% block title %}Pengaturan — TG Drive{% endblock %}
+{% block content %}
+<h2 style="margin-bottom:6px">Akun Telegram</h2>
+<p class="muted" style="margin-bottom:18px">Satu akun aktif dalam satu waktu. File masing-masing akun tersimpan terpisah. Setiap pengguna memakai bot &amp; channel Telegram miliknya sendiri.</p>
+
+<details class="card" style="max-width:720px">
+  <summary style="cursor:pointer;font-weight:600">🧭 Panduan: buat bot &amp; channel sendiri (klik untuk buka)</summary>
+  <ol style="font-size:.9rem;line-height:1.7;margin:10px 0 4px;padding-left:20px">
+    <li>Buka <b>@BotFather</b> di Telegram → kirim <code>/newbot</code> → ikuti langkahnya → salin <b>token</b> yang diberikan.</li>
+    <li>Buat <b>channel baru</b> (privat disarankan) → tambahkan bot tadi sebagai <b>admin</b> channel.</li>
+    <li>Dapatkan <b>ID channel</b>: forward satu pesan dari channel ke <b>@userinfobot</b> (ID diawali <code>-100</code>).</li>
+    <li>Kirim satu pesan apa saja di channel (mis. "tes"), supaya bot "kenal" channel.</li>
+    <li>Isi form di bawah → klik <b>Tes Koneksi</b> → bila OK klik <b>Simpan Akun</b>.</li>
+    <li>File di atas ±100 MB sebaiknya diupload lewat <b>⚡ Mode Besar</b> (khusus PRO) agar tidak kena batas Cloudflare.</li>
+  </ol>
+</details>
+
+<div id="accList" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr));margin:18px 0 26px"></div>
+
+<div class="login-card" id="accForm" style="text-align:left;max-width:560px">
+  <h3 id="accFormTitle" style="margin-bottom:4px">Tambah akun</h3>
+  <p class="muted">Buat bot baru via @BotFather, buat channel privat, jadikan bot admin.</p>
+  <label style="font-size:.85rem;color:var(--muted)">Nama akun</label>
+  <input id="accName" placeholder="mis. Pribadi / Kerja">
+  <label style="font-size:.85rem;color:var(--muted)">Token bot</label>
+  <input id="accToken" placeholder="123456:AAE..." autocomplete="off">
+  <label style="font-size:.85rem;color:var(--muted)">ID channel</label>
+  <input id="accChannel" placeholder="-100...">
+  <div id="accMsg" style="font-size:.85rem;margin-bottom:10px"></div>
+  <div class="row" style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn ghost" id="accCancel" style="display:none">Batal</button>
+    <button class="btn ghost" id="accTest">Tes Koneksi</button>
+    <button class="btn primary" id="accSave">Simpan Akun</button>
+  </div>
+</div>
+
+<h2 style="margin:30px 0 6px">⚡ Max Speed</h2>
+<p class="muted" style="margin-bottom:18px">Jalur langsung via IP publik — tanpa batas ±100 MB Cloudflare, upload lebih cepat. Khusus pengguna PRO. IP publik diatur oleh admin.</p>
+
+<div class="login-card" id="msCard" style="text-align:left;max-width:560px">
+  <div id="msBody"><p class="muted">Memuat…</p></div>
+</div>
+
+<h2 style="margin:30px 0 6px">Sumber daya server</h2>
+<p class="muted" style="margin-bottom:18px">Pemakaian live + batas pemakaian TG Drive. Menerapkan batas me-restart service otomatis (±10 detik).</p>
+
+<div class="login-card" style="text-align:left;max-width:560px">
+  <div class="resrow"><span>CPU VPS</span><div class="bar"><i id="rCpu"></i></div><b id="rCpuT">…</b></div>
+  <div class="resrow"><span>RAM VPS</span><div class="bar"><i id="rMem"></i></div><b id="rMemT">…</b></div>
+  <div class="resrow"><span>CPU TG Drive</span><div class="bar"><i id="rPCpu"></i></div><b id="rPCpuT">…</b></div>
+  <div class="resrow"><span>RAM TG Drive</span><div class="bar"><i id="rPMem"></i></div><b id="rPMemT">…</b></div>
+  <p class="muted" id="rNote" style="margin:10px 0 18px"></p>
+  <h3 style="margin-bottom:8px">Batas pemakaian</h3>
+  <label style="font-size:.85rem;color:var(--muted)">Batas CPU (% dari total VPS)</label>
+  <input type="number" id="lCpu" min="5" max="100" step="5">
+  <label style="font-size:.85rem;color:var(--muted)">Batas RAM (MB)</label>
+  <input type="number" id="lMem" min="256" max="8192" step="256">
+  <div id="lMsg" style="font-size:.85rem;margin-bottom:10px"></div>
+  <div class="row" style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn primary" id="lApply">Terapkan batas & restart</button>
+  </div>
+</div>
+
+<h2 style="margin:30px 0 6px">🔒 Kunci Folder</h2>
+<p class="muted" style="margin-bottom:18px">Kunci folder dengan PIN. Isi folder terkunci disembunyikan dari Drive, pencarian, dan Foto sampai dibuka dengan PIN.</p>
+
+<div class="login-card" style="text-align:left;max-width:560px">
+  <div id="pinStatus" class="muted" style="margin-bottom:12px"></div>
+  <div id="pinOldWrap" class="hidden">
+    <label style="font-size:.85rem;color:var(--muted)">PIN lama</label>
+    <input id="pinOld" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+  </div>
+  <label style="font-size:.85rem;color:var(--muted)">PIN baru (4–12 digit)</label>
+  <input id="pinNew" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+  <label style="font-size:.85rem;color:var(--muted)">Ulangi PIN baru</label>
+  <input id="pinNew2" type="password" inputmode="numeric" maxlength="12" autocomplete="off">
+  <div id="pinMsg" style="font-size:.85rem;margin-bottom:10px"></div>
+  <div class="row" style="display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn ghost" id="relockAll">Kunci ulang semua</button>
+    <button class="btn primary" id="pinSave">Simpan PIN</button>
+  </div>
+  <h3 style="margin:20px 0 6px">Folder</h3>
+  <div id="lockFolders"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>initSettings();</script>
+{% endblock %}
