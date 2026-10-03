@@ -1358,7 +1358,7 @@ def set_user_setting(user_id, key, value):
 # ---------- upload chunked / resume ----------
 
 def create_upload_session(sid, user_id, file_name, file_size, chunk_size, total_chunks,
-                           tmp_path, folder_id=None, overwrite_id=None, ttl_hours=24,
+                           tmp_path, folder_id=None, overwrite_id=None, ttl_hours=3,
                            client_key=None):
     import json as _json
     from datetime import datetime, timedelta, timezone
