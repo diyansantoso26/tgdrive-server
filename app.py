@@ -22,6 +22,9 @@ from PIL.ExifTags import TAGS
 
 import config
 import db
+
+# janitor sesi upload: timestamp terakhir cleanup_upload_sessions() per worker
+_last_upload_cleanup = 0
 import tg
 
 db.init_db()
@@ -1086,6 +1089,18 @@ def _chunk_auth():
 def api_upload_init():
     """Mulai sesi upload chunked. Tentukan target: domain (file <100MB) atau
     direct (PRO, file >=100MB). Untuk lintas origin, berikan transfer token."""
+    # janitor: bersihkan sesi + file sementara kedaluwarsa (maks tiap 30 mnt per worker)
+    global _last_upload_cleanup
+    try:
+        _now = time.time()
+        if _now - _last_upload_cleanup > 1800:
+            _last_upload_cleanup = _now
+            try:
+                db.cleanup_upload_sessions()
+            except Exception:
+                pass
+    except Exception:
+        pass
     if not tg_configured():
         return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
     if not _user_creds():
@@ -1145,7 +1160,7 @@ def api_upload_init():
             if need_direct:
                 raw = secrets.token_urlsafe(32)
                 db.create_transfer_token(hashlib.sha256(raw.encode()).hexdigest(), uid(),
-                                         'upload', ref_id=old['id'], ttl_seconds=24 * 3600)
+                                         'upload', ref_id=old['id'], ttl_seconds=3 * 3600)
                 out['direct_url'] = direct_base
                 out['transfer_token'] = raw
             return jsonify(out)
@@ -1169,7 +1184,7 @@ def api_upload_init():
         # token lintas origin: terikat upload_id ini, 24 jam, multi-pakai dalam TTL
         raw = secrets.token_urlsafe(32)
         db.create_transfer_token(hashlib.sha256(raw.encode()).hexdigest(), uid(),
-                                 'upload', ref_id=sid, ttl_seconds=24 * 3600)
+                                 'upload', ref_id=sid, ttl_seconds=3 * 3600)
         out['direct_url'] = direct_base
         out['transfer_token'] = raw
     return jsonify(out)
@@ -1279,7 +1294,7 @@ def api_upload_complete():
         fid, overwritten = _process_upload_file(s['tmp_path'], s['file_name'], s['file_size'],
                                                 s['folder_id'], s['overwrite_id'],
                                                 creds, user_id, t0, old_rec)
-        # tandai done + simpan hasil (sesi dihapus oleh cleanup 24 jam; retry aman)
+        # tandai done + simpan hasil (sesi dihapus oleh cleanup 3 jam; retry aman)
         db.set_upload_session_status(s['id'], 'done', result_file_id=fid)
         try:
             os.remove(s['tmp_path'])
