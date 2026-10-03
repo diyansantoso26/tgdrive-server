@@ -75,29 +75,6 @@ initDrive();
     }catch(e){ alert('Gagal: '+e.message); }
   });
 })();
-// Max Speed otomatis untuk PRO: bila belum pernah diatur eksplisit dan masih
-// di domain, tampilkan pemberitahuan + pindah otomatis ke jalur langsung.
-(function(){
-  const bar=document.getElementById('directBar');
-  if(!bar||ON_DIRECT) return;
-  let cancelled=false;
-  (async()=>{
-    try{
-      const r=await fetch('/api/server-info'); if(!r.ok) return;
-      const d=await r.json();
-      if(!(d.max_speed&&!d.max_speed_explicit&&d.direct_url)||ON_DIRECT||cancelled) return;
-      bar.innerHTML='⚡ <b>Max Speed aktif</b> — memindahkan ke jalur langsung… '+
-        '<button class="btn sm ghost" id="msCancel" style="margin-left:8px">Batal</button>';
-      bar.classList.remove('hidden');
-      document.getElementById('msCancel').onclick=async()=>{
-        cancelled=true; bar.classList.add('hidden');
-        try{await fetch('/api/max-speed',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_speed:false})})}catch(e){}
-      };
-      setTimeout(()=>{
-        if(!cancelled) (window.handoffGo||function(b){location.href=b+location.pathname+location.search})(d.direct_url);
-      },2500);
-    }catch(e){}
-  })();
-})();
+
 </script>
 {% endblock %}
