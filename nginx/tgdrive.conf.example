@@ -1,0 +1,45 @@
+# TG Drive — contoh konfigurasi nginx (standalone, tanpa panel).
+# Ganti __DOMAIN__ dengan domainmu, simpan sebagai /etc/nginx/sites-available/tgdrive
+# (Debian/Ubuntu) atau /etc/nginx/conf.d/tgdrive.conf (RHEL/Arch),
+# lalu: nginx -t && systemctl reload nginx
+#
+# Aplikasi jalan di 127.0.0.1:8502 via systemd (lihat systemd/tgdrive.service).
+
+upstream tgdrive {
+    server 127.0.0.1:8502;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+
+    # ACME challenge untuk certbot
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    # Cache file Telegram di-serve langsung oleh nginx (internal).
+    location /_tgcache/ {
+        internal;
+        alias /home/tgdrive/app/data/cache/;
+    }
+
+    location / {
+        proxy_pass http://tgdrive;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+        client_max_body_size 2048M;
+        proxy_request_buffering off;
+    }
+
+    # Blokir file sensitif
+    location ~ ^/(\.env|\.git|\.svn) {
+        return 404;
+    }
+}
