@@ -107,3 +107,20 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
 - 5 tema (per user, tersimpan di DB): Gelap, Terang, Senja, Samudra, Hutan. Ganti via menu akun → Tema.
 - Ikon SVG di navigasi, toolbar, dan menu (mengikuti warna tema).
 - API: `PUT /api/profile` {display_name, theme}.
+
+## Upload 2-mode (2026-10-03)
+
+- **Mode 1** (<100 MB): single POST biasa via domain — perilaku lama, stabil.
+- **Mode 2** (>=100 MB, khusus PRO): chunked 5/10 MB via `direct.gtg.my.id:8443`
+  dengan token transfer (bukan cookie lintas origin) + header CORS terbatas.
+  Finalisasi Telegram tidak lagi lewat Cloudflare -> bebas HTTP 524.
+- `POST /api/upload/complete` **idempotent**: retry dengan `upload_id` yang sama
+  mengembalikan hasil tersimpan (`result_file_id`), tidak duplikat ke Telegram.
+  `POST /api/upload/init` juga idempotent via `client_key` (retry init tidak bikin sesi ganda).
+- Toggle admin **Pengaturan -> Upload resume/chunked** (default ON, setting `chunked_upload`):
+  OFF = endpoint chunked menolak 503; file >=100 MB hanya bisa via jalur langsung manual.
+- Menu **Mode Besar dihapus dari menu ⋯** (badge PRO sudah cukup sebagai penanda).
+  Fallback tersisa: tombol "⚡ Coba via Mode Besar" muncul kontekstual saat upload
+  besar otomatis gagal + link "Buka jalur langsung (darurat)" di Pengaturan khusus PRO.
+- Kolom baru `upload_sessions.client_key` + `result_file_id` (migrasi otomatis di `db.init_db`).
+- Batas: non-PRO 100 MB/file, PRO 2 GB/file.
