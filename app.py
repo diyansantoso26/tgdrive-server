@@ -896,6 +896,36 @@ def api_check_duplicate():
     })
 
 
+def _make_local_thumb(tmp_path, kind, fid):
+    """Generate thumbnail lokal 480px (PIL untuk foto, ffmpeg untuk video).
+    Tidak tergantung thumbnail bawaan Telegram yang kecil/kadang tidak ada.
+    Kembalikan nama file di THUMB_DIR atau None bila gagal."""
+    if kind not in ('photo', 'video'):
+        return None
+    out_name = 'local_%d.jpg' % fid
+    out_path = os.path.join(config.THUMB_DIR, out_name)
+    try:
+        if kind == 'photo':
+            with Image.open(tmp_path) as im:
+                im = im.convert('RGB')
+                im.thumbnail((480, 480), Image.LANCZOS)
+                im.save(out_path, 'JPEG', quality=78)
+        else:
+            subprocess.run(['ffmpeg', '-y', '-ss', '1', '-i', tmp_path,
+                            '-vframes', '1', '-vf', 'scale=480:-1', out_path],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=120, check=True)
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 1024:
+            return out_name
+    except Exception:
+        pass
+    try:
+        os.remove(out_path)
+    except OSError:
+        pass
+    return None
+
+
 def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, creds,
                           user_id, t0, old_rec=None):
     """Kirim file lokal ke Telegram + catat DB. Dipakai upload biasa & chunked."""
@@ -933,9 +963,10 @@ def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, cre
         db.update_file_storage(old_rec['id'], user_id, new_rec)
         if old_rec.get('message_id'):
             tg.delete_message(old_rec['message_id'], creds=creds)
-        # hapus cache lokal versi lama (file + thumbnail)
+        # hapus cache lokal versi lama (file + thumbnail Telegram + thumbnail lokal)
         for _cp in (cache_path_for(old_rec['file_id']),
-                    os.path.join(config.THUMB_DIR, (old_rec.get('thumb_file_id') or '') + '.jpg')):
+                    os.path.join(config.THUMB_DIR, (old_rec.get('thumb_file_id') or '') + '.jpg'),
+                    os.path.join(config.THUMB_DIR, old_rec.get('thumb_local') or '')):
             try:
                 if _cp and os.path.exists(_cp):
                     os.remove(_cp)
@@ -944,6 +975,13 @@ def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, cre
         fid = old_rec['id']
     else:
         fid = db.add_file(new_rec)
+    # thumbnail lokal: generate sendiri (tajam & selalu ada), tidak tergantung Telegram
+    try:
+        _tl = _make_local_thumb(tmp_path, kind, fid)
+        if _tl:
+            db.set_thumb_local(fid, user_id, _tl)
+    except Exception:
+        pass
     dur = max(0.1, time.time() - t0)
     spd = size / dur
     db.log_activity('overwrite' if old_rec else 'upload', user_id,
@@ -1757,9 +1795,18 @@ def file_download(fid):
 @login_required
 def file_thumb(fid):
     rec = db.get_file(fid, uid())
-    if not rec or not rec.get('thumb_file_id'):
+    if not rec:
         abort(404)
     if not folder_accessible(rec.get('folder_id')):
+        abort(404)
+    # 1) thumbnail lokal (generate sendiri — tajam & selalu ada)
+    tl = rec.get('thumb_local')
+    if tl:
+        lp = os.path.join(config.THUMB_DIR, os.path.basename(tl))
+        if os.path.exists(lp):
+            return send_file(lp, mimetype='image/jpeg', max_age=86400)
+    # 2) fallback: thumbnail bawaan Telegram
+    if not rec.get('thumb_file_id'):
         abort(404)
     tp = os.path.join(config.THUMB_DIR, rec['thumb_file_id'] + '.jpg')
     if not os.path.exists(tp):
