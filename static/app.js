@@ -1123,7 +1123,8 @@ function initSettings(){
       if(document.activeElement!==document.getElementById('lMem'))document.getElementById('lMem').value=r.limits.mem_mb;
     }catch(e){/* service restart */}
   }
-  document.getElementById('lApply').onclick=async()=>{
+  const lApplyBtn=document.getElementById('lApply');
+  if(lApplyBtn)lApplyBtn.onclick=async()=>{ // hanya admin: tombol tidak ada utk user biasa
     const m=document.getElementById('lMsg');
     m.textContent='Menerapkan & me-restart service…';m.style.color='var(--muted)';
     try{
@@ -1243,6 +1244,7 @@ function initActivity(){
 
 /* ---------- PHOTOS ---------- */
 function initPhotos(){
+  document.body.classList.add('page-photos'); // viewport terkunci: hanya #tlWrap yang scroll
   const S={sort:'taken',order:'desc',fav:false,view:'grid',labelId:null,labels:[],files:[]};
   const tl=document.getElementById('timeline'),empty=document.getElementById('emptyState');
   const wrap=document.getElementById('tlWrap'),scrub=document.getElementById('scrub'),
@@ -1381,14 +1383,14 @@ function initPhotos(){
     const g=grpEls[idx];if(!g)return;
     bub.textContent=g.label;bub.style.top=(ratio*100)+'%';
     knobTo(ratio);
-    g.el.scrollIntoView({block:'start'});
+    wrap.scrollTo({top:g.el.offsetTop,behavior:dragging?'auto':'smooth'});
   }
   scrub.addEventListener('pointerdown',e=>{if(!grpEls.length)return;dragging=true;scrub.classList.add('drag');try{scrub.setPointerCapture(e.pointerId)}catch(x){}scrubMove(e.clientY);e.preventDefault()});
   scrub.addEventListener('pointermove',e=>{if(dragging)scrubMove(e.clientY)});
   ['pointerup','pointercancel'].forEach(ev=>scrub.addEventListener(ev,()=>{dragging=false;scrub.classList.remove('drag')}));
-  window.addEventListener('scroll',()=>{
+  wrap.addEventListener('scroll',()=>{
     if(!grpEls.length||dragging)return;
-    const y=window.scrollY+140;let idx=0;
+    const y=wrap.scrollTop+80;let idx=0;
     grpEls.forEach((g,i)=>{if(g.el.offsetTop<=y)idx=i});
     knobTo(grpEls.length>1?idx/(grpEls.length-1):0);
   },{passive:true});
