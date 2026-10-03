@@ -146,6 +146,19 @@ label.btn{cursor:pointer}
 /* modal */
 .modal{position:fixed;inset:0;background:#000a;z-index:100;display:flex;align-items:center;justify-content:center}
 .modal .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px;width:min(420px,92vw)}
+.modal .box.wide{width:min(580px,94vw)}
+#dupBody{max-height:56vh;overflow-y:auto;margin:0 -6px;padding:0 6px}
+.dupgroup{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.duphead{padding:10px 12px;background:var(--bg2);display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.duphead b{font-size:.88rem;word-break:break-all}
+.dupcount{font-size:.75rem;color:var(--muted);font-weight:700;white-space:nowrap}
+.duprow{display:flex;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
+.duprow img{width:44px;height:44px;object-fit:cover;border-radius:8px;background:var(--bg2);flex-shrink:0}
+.duprow input{width:18px;height:18px;flex-shrink:0;accent-color:var(--acc);margin:0}
+.dupmeta{min-width:0;display:flex;flex-direction:column}
+.dupmeta b{font-size:.83rem;word-break:break-all}
+.dupmeta small{color:var(--muted);font-size:.75rem}
+.keepTag{color:var(--acc);font-weight:700}
 .modal h3{margin-bottom:14px}
 .modal input,.modal select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);margin-bottom:12px}
 .modal .row{display:flex;gap:10px;justify-content:flex-end}
@@ -376,6 +389,7 @@ body.page-photos .tl-outer{flex:1;min-height:0;position:relative;display:flex}
 body.page-photos #timeline{padding:0 36px 0 4px}
 body.page-photos .tl-jgrid{display:flex;flex-wrap:wrap;gap:3px;content-visibility:auto;contain-intrinsic-size:auto 420px}
 body.page-photos .tl-jgrid .fitem{height:185px;flex:0 0 auto}
+@media(min-width:641px){body.page-photos .tl-jgrid .fitem{height:clamp(185px,18vw,280px)}}
 body.page-photos .tl-jgrid .fitem .thumb{height:100%;aspect-ratio:var(--ar,1)}
 body.page-photos .tl-jgrid .fitem .thumb img{width:100%;height:100%;object-fit:cover}
 .scrub .ytick{position:absolute;right:22px;transform:translateY(-50%);font-size:.62rem;color:var(--muted);font-weight:700;white-space:nowrap;pointer-events:none}
