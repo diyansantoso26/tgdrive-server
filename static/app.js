@@ -516,6 +516,19 @@ function initSettings(){
     }catch(e){say(e.message,false)}
   };
   /* --- max speed (PRO): jalur langsung via IP publik --- */
+  /* --- max speed: pindah domain/direct pakai token handoff (tanpa login ulang) --- */
+  async function handoffGo(base){
+    try{
+      const r=await api('/api/handoff-token',{method:'POST'});
+      if(r&&r.token){
+        const dest=location.pathname+location.search;
+        location.href=base+'/auth/handoff?token='+encodeURIComponent(r.token)+'&next='+encodeURIComponent(dest);
+        return;
+      }
+    }catch(e){}
+    location.href=base+location.pathname+location.search; // fallback: navigasi biasa
+  }
+  window.handoffGo=handoffGo; // dipakai juga oleh drive.html
   async function loadMaxSpeed(){
     const body=document.getElementById('msBody');
     let info=null;
@@ -549,19 +562,19 @@ function initSettings(){
         if(!r.ok)throw new Error('gagal');
         sayM(want?'Max Speed aktif ✓':'Max Speed dimatikan ✓',true);
         setTimeout(()=>{
-          if(want&&info.direct_url){location.href=info.direct_url+location.pathname+location.search}
-          else if(!want&&onDirect&&info.domain_url){location.href=info.domain_url+location.pathname}
+          if(want&&info.direct_url){handoffGo(info.direct_url)}
+          else if(!want&&onDirect&&info.domain_url){handoffGo(info.domain_url)}
           else loadMaxSpeed();
         },800);
       }catch(e){ev.target.checked=!want;sayM(e.message,false)}
     };
     const go=document.getElementById('msGo');
-    if(go)go.onclick=()=>{location.href=info.direct_url+location.pathname+location.search};
+    if(go)go.onclick=()=>{handoffGo(info.direct_url)};
     const back=document.getElementById('msBack');
     if(back)back.onclick=async()=>{
       sayM('Menonaktifkan Max Speed…');
       try{await api('/api/max-speed',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_speed:false})})}catch(e){}
-      location.href=info.domain_url+location.pathname;
+      handoffGo(info.domain_url);
     };
   }
   loadMaxSpeed();
