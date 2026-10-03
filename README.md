@@ -78,8 +78,11 @@ systemd/            unit service
 nginx/              contoh konfigurasi nginx
 ```
 
-## E. Catatan keamanan
+## E. Runbook operasional
 
+Lihat **[docs/RUNBOOK.md](docs/RUNBOOK.md)** — catatan rilis APK/Windows, aturan yang tidak boleh dilanggar, dan perintah cepat. Baca ini dulu sebelum mengerjakan apa pun di server.
+
+## F. Catatan keamanan
 - `.env`, `*.db`, dan folder `apk/` **tidak pernah** di-commit (lihat `.gitignore`).
 - Token bot Telegram per-user dienkripsi (Fernet) di database.
 - Untuk upload file >20MB butuh server Bot API lokal (lihat `telegram-bot-api.service` di riwayat) — opsional.
