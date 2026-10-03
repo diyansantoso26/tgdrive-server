@@ -817,15 +817,31 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       if(dt>=0.5){const s=(e.loaded-trk.l)/dt;trk.t=now;trk.l=e.loaded;
         row.spd.textContent=s>0?fmtSpd(s)+' • sisa '+fmtETA((e.total-e.loaded)/s):'';liveMap.set(lid,s);liveRefresh();}}};
     const done=()=>{liveMap.delete(lid);liveRefresh();resolve()};
+    // Cek duplikat ulang sebelum retry: percobaan sebelumnya mungkin sebenarnya
+    // sudah masuk server (responsnya saja yang hilang, mis. 502) — jangan double.
+    const dupNow=()=>api('/api/check-duplicate',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:f.name,size:f.size,folder_id:folderId})})
+      .then(chk=>!!(chk&&chk.duplicate)).catch(()=>false);
+    const skipDup=()=>{row.el.classList.remove('err');row.status.textContent='Sudah ada di Drive — dilewati ✓';
+      setTimeout(()=>{row.el.remove();loadFolders();load()},2500);done();};
     const fail=(msg,retryable)=>{
       if(retryable&&attempt<MAX_TRY){
         const wait=attempt*3;
         row.status.textContent='Gagal, mengulang dalam '+wait+' dtk… ('+attempt+'/'+MAX_TRY+')';
-        setTimeout(()=>{row.el.remove();doUploadP(f,overwriteId,folderId,attempt+1).then(done)},wait*1000);
+        setTimeout(()=>{dupNow().then(isDup=>{
+          if(isDup)skipDup();
+          else{row.el.remove();doUploadP(f,overwriteId,folderId,attempt+1).then(done);}
+        })},wait*1000);
       }else{
         row.el.classList.add('err');
         row.status.innerHTML='<span>Gagal: '+esc(msg)+'</span> <button class="btn ghost" style="padding:2px 10px;margin-left:8px">Coba lagi</button>';
-        row.status.querySelector('button').onclick=()=>{row.el.remove();doUploadP(f,overwriteId,folderId,1).then(()=>{loadFolders();load()});done()};
+        row.status.querySelector('button').onclick=()=>{
+          row.status.textContent='Memeriksa duplikat…';
+          dupNow().then(isDup=>{
+            if(isDup)skipDup();
+            else{row.el.remove();doUploadP(f,overwriteId,folderId,1).then(()=>{loadFolders();load()});done();}
+          });
+        };
       }
     };
     x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}
