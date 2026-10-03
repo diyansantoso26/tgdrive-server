@@ -649,18 +649,27 @@ function initDrive(){
     if(_upActive.size){e.preventDefault();e.returnValue='';}
   });
   function liveRefresh(){
-    const pill=document.getElementById('livepill');if(!pill)return;
-    let sp=0,n=0;liveMap.forEach(v=>{sp+=v;n++});
-    upCtxs.forEach(c=>{if(!c.cancelled){n++;sp+=c._spd||0}});
+    const fb=document.getElementById('upFloat');if(!fb)return;
+    let sp=0,n=0,tot=0,done=0;
+    liveMap.forEach(v=>{sp+=v;n++});
+    upCtxs.forEach(c=>{if(c.cancelled)return;n++;sp+=c._spd||0;
+      tot+=c.file.size;done+=Math.min((c._done||0)*(c._cs||c.file.size),c.file.size)});
     const q=document.getElementById('queue');
     const rows=q?q.querySelectorAll('.qitem').length:0;
-    /* pill tampil bila ada upload aktif ATAU sisa antrean (mis. gagal/Coba lagi),
-       selama panel disembunyikan — klik pill membuka panel kembali */
+    /* tombol mengambang tampil bila ada upload aktif ATAU sisa antrean
+       (mis. gagal/Coba lagi), selama panel disembunyikan — klik membuka panel */
     if((n>0||rows>0)&&q&&q.classList.contains('hidden')){
-      pill.classList.remove('hidden');
-      pill.textContent=n>0?('⬆ '+fmtSpd(sp)+' · '+n+' file'):('⬆ '+rows+' antrean');
+      fb.classList.remove('hidden');
+      const badge=document.getElementById('upFloatBadge'),ring=document.getElementById('upRingFg');
+      const label=n>0?n:rows;
+      if(badge){badge.textContent=label;badge.classList.remove('hidden')}
+      if(ring){const C=2*Math.PI*26,p=tot>0?Math.min(done/tot,1):0;
+        ring.style.strokeDasharray=C;ring.style.strokeDashoffset=C*(1-p)}
+      fb.classList.toggle('warn',n===0&&rows>0);
+      fb.title=n>0?('Mengupload '+n+' file'+(sp>0?' • '+fmtSpd(sp):'')+' — klik untuk buka panel')
+                  :('Antrean upload ('+rows+') — klik untuk buka panel');
     }
-    else pill.classList.add('hidden');
+    else fb.classList.add('hidden');
   }
   /* ---------- panel upload ala TeraCopy ---------- */
   const upCtxs=new Set();
@@ -717,8 +726,8 @@ function initDrive(){
     liveRefresh();
   }
   setInterval(upTick,1000);
-  const _lp=document.getElementById('livepill');
-  if(_lp)_lp.onclick=()=>{const q=document.getElementById('queue');if(q){q.classList.remove('hidden');q.scrollIntoView({behavior:'smooth',block:'start'})}};
+  const _uf=document.getElementById('upFloat');
+  if(_uf)_uf.onclick=()=>{const q=document.getElementById('queue');if(q){q.classList.remove('hidden');q.scrollIntoView({behavior:'smooth',block:'start'})}};
 
   /* upload */
   const fi=document.getElementById('fileInput'),queue=document.getElementById('queue'),hint=document.getElementById('dropHint');
