@@ -158,6 +158,16 @@ label.btn{cursor:pointer}
 .lockrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem}
 .lockrow:last-child{border-bottom:none}
 .lockrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ---- PIN & badge kunci folder ---- */
+.pinwrap{position:relative;margin-bottom:10px}
+.pinwrap input{width:100%;padding-right:44px;margin-bottom:0}
+.eyebtn{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:1.05rem;cursor:pointer;opacity:.65;padding:8px;color:inherit}
+.eyebtn:hover{opacity:1}
+.pill{display:inline-block;padding:3px 12px;border-radius:999px;font-size:.78rem;font-weight:600;border:1px solid}
+.pill.ok{background:rgba(125,223,154,.13);color:#4caf7d;border-color:rgba(125,223,154,.45)}
+.pill.warn{background:rgba(255,217,138,.12);color:#c99a3f;border-color:rgba(255,217,138,.45)}
+[data-theme="gelap"] .pill.ok{color:#7ddf9a}
+[data-theme="gelap"] .pill.warn{color:#ffd98a}
 .locknote{font-size:.8rem;color:var(--muted);padding:6px 2px}
 
 /* ---- menu akun ---- */
@@ -195,6 +205,9 @@ label.btn{cursor:pointer}
 /* ikon nav */
 .topbar nav a{display:flex;align-items:center;gap:7px}
 .topbar nav a svg{width:15px;height:15px}
+/* badge PRO di topbar */
+.topbar nav a.probadge{background:linear-gradient(135deg,rgba(255,215,0,.16),rgba(255,180,0,.08));color:#c99a3f;border:1px solid rgba(255,200,60,.45);font-weight:700;letter-spacing:.4px}
+[data-theme="gelap"] .topbar nav a.probadge{color:#ffd98a}
 /* toast undo */
 .utoast{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:80;display:flex;gap:12px;align-items:center;
   background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 16px;font-size:.88rem;
