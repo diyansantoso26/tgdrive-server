@@ -1177,7 +1177,7 @@ function initSettings(){
       const fs=(await api('/api/folders')).folders||[];
       const locked=fs.filter(f=>f.is_locked), unlocked=fs.filter(f=>!f.is_locked);
       document.getElementById('lockCount').textContent=fs.length?(locked.length+' dari '+fs.length+' terkunci'):'';
-      const row=f=>'<div class="lockrow"><span>'+(f.is_locked?'🔒 ':'')+esc(f.name)+'</span><button class="btn ghost lkbtn" data-id="'+f.id+'" data-lk="'+(f.is_locked?1:0)+'">'+(f.is_locked?'Buka kunci':'🔒 Kunci')+'</button></div>';
+      const row=f=>'<div class="lockrow"><span class="lname" title="'+esc(f.name)+'">📁 '+(f.is_locked?'🔒 ':'')+esc(f.name)+'</span><button class="btn ghost" data-id="'+f.id+'" data-lk="'+(f.is_locked?1:0)+'">'+(f.is_locked?'Buka kunci':'🔒 Kunci')+'</button></div>';
       const box=document.getElementById('lockFolders');
       box.innerHTML=(locked.length?'<div class="locknote">Terkunci</div>'+locked.map(row).join(''):'')+
         (unlocked.length?'<div class="locknote" style="margin-top:8px">Tidak terkunci</div>'+unlocked.map(row).join(''):'')||
