@@ -160,6 +160,23 @@ CREATE TABLE IF NOT EXISTS transfer_tokens (
     used INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_transfer_tokens_hash ON transfer_tokens(token_hash);
+-- Label kustom per user (untuk foto/file): satu file bisa masuk banyak label.
+CREATE TABLE IF NOT EXISTS labels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#4f8cff',
+    icon TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_labels_user ON labels(user_id);
+CREATE TABLE IF NOT EXISTS file_labels (
+    label_id INTEGER NOT NULL,
+    file_id INTEGER NOT NULL,
+    PRIMARY KEY (label_id, file_id)
+);
+CREATE INDEX IF NOT EXISTS idx_file_labels_file ON file_labels(file_id);
 CREATE TABLE IF NOT EXISTS licenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT NOT NULL UNIQUE,
@@ -214,6 +231,9 @@ def init_db():
     for _col, _typ in (('client_key', 'TEXT'), ('result_file_id', 'INTEGER')):
         if _col not in _table_cols(conn, 'upload_sessions'):
             conn.execute('ALTER TABLE upload_sessions ADD COLUMN %s %s' % (_col, _typ))
+    # migrasi: thumbnail lokal (generate sendiri via PIL/ffmpeg, tidak tergantung Telegram)
+    if 'thumb_local' not in _table_cols(conn, 'files'):
+        conn.execute('ALTER TABLE files ADD COLUMN thumb_local TEXT')
     conn.commit()
     # buat akun admin bila belum ada (dari password lama di .env)
     now = datetime.now().isoformat(timespec='seconds')
@@ -465,6 +485,15 @@ def update_file_storage(fid, user_id, rec):
     conn.close()
 
 
+def set_thumb_local(fid, user_id, name):
+    """Simpan nama file thumbnail lokal hasil generate sendiri."""
+    conn = get_db()
+    conn.execute('UPDATE files SET thumb_local=? WHERE id=? AND user_id=?',
+                 (name, fid, user_id))
+    conn.commit()
+    conn.close()
+
+
 def get_file(fid, user_id, account_id=None):
     account_id = _acc_filter(user_id, account_id)
     conn = get_db()
@@ -493,7 +522,7 @@ def check_duplicate(name, size, user_id, folder_id=None, account_id=None):
 
 
 def list_files(user_id, folder_id=None, q=None, sort='date', order='desc', trashed=0,
-               favorites_only=False, kind_in=None, account_id=None):
+               favorites_only=False, kind_in=None, account_id=None, label_id=None):
     account_id = _acc_filter(user_id, account_id)
     allowed_sort = {'name': 'name', 'date': 'uploaded_at', 'size': 'size', 'taken': 'taken_at'}
     col = allowed_sort.get(sort, 'uploaded_at')
@@ -511,6 +540,9 @@ def list_files(user_id, folder_id=None, q=None, sort='date', order='desc', trash
     if kind_in:
         sql += ' AND kind IN (%s)' % ','.join('?' * len(kind_in))
         params.extend(kind_in)
+    if label_id:
+        sql += ' AND id IN (SELECT file_id FROM file_labels WHERE label_id=?)'
+        params.append(label_id)
     if col == 'taken_at':
         sql += f' ORDER BY {col} IS NULL, {col} {direction}'
     else:
@@ -554,9 +586,145 @@ def set_favorite(fid, user_id, fav):
     conn.close()
 
 
+# ---------- label kustom ----------
+LABEL_COLORS = {'#f87171', '#fb923c', '#fbbf24', '#34d399', '#4f8cff', '#a78bfa', '#f472b6', '#94a3b8'}
+MAX_LABELS_PER_USER = 50
+
+
+def create_label(user_id, name, color='#4f8cff', icon=''):
+    name = (name or '').strip()[:30]
+    if not name:
+        raise ValueError('Nama label wajib diisi')
+    if color not in LABEL_COLORS:
+        color = '#4f8cff'
+    conn = get_db()
+    try:
+        n = conn.execute('SELECT COUNT(*) c FROM labels WHERE user_id=?', (user_id,)).fetchone()['c']
+        if n >= MAX_LABELS_PER_USER:
+            raise ValueError('Maksimal %d label' % MAX_LABELS_PER_USER)
+        cur = conn.execute('INSERT INTO labels (user_id, name, color, icon, created_at)'
+                           ' VALUES (?,?,?,?,?)',
+                           (user_id, name, color, (icon or '')[:8],
+                            datetime.now().isoformat(timespec='seconds')))
+        lid = cur.lastrowid
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return lid
+
+
+def list_labels(user_id):
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT l.*, (SELECT COUNT(*) FROM file_labels fl JOIN files f ON f.id=fl.file_id'
+        ' WHERE fl.label_id=l.id AND f.trashed=0) AS file_count'
+        ' FROM labels l WHERE l.user_id=? ORDER BY l.created_at', (user_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_label(lid, user_id):
+    conn = get_db()
+    r = conn.execute('SELECT * FROM labels WHERE id=? AND user_id=?', (lid, user_id)).fetchone()
+    conn.close()
+    return dict(r) if r else None
+
+
+def update_label(lid, user_id, name=None, color=None, icon=None):
+    sets, params = [], []
+    if name is not None:
+        name = name.strip()[:30]
+        if not name:
+            raise ValueError('Nama label wajib diisi')
+        sets.append('name=?')
+        params.append(name)
+    if color is not None:
+        sets.append('color=?')
+        params.append(color if color in LABEL_COLORS else '#4f8cff')
+    if icon is not None:
+        sets.append('icon=?')
+        params.append(icon[:8])
+    if not sets:
+        return
+    params.extend([lid, user_id])
+    conn = get_db()
+    try:
+        conn.execute('UPDATE labels SET %s WHERE id=? AND user_id=?' % ','.join(sets), params)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_label(lid, user_id):
+    conn = get_db()
+    conn.execute('DELETE FROM file_labels WHERE label_id=? AND label_id IN'
+                 ' (SELECT id FROM labels WHERE id=? AND user_id=?)', (lid, lid, user_id))
+    conn.execute('DELETE FROM labels WHERE id=? AND user_id=?', (lid, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_file_labels(fid, user_id):
+    """Daftar label (id) untuk satu file — pastikan file milik user."""
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT fl.label_id FROM file_labels fl JOIN files f ON f.id=fl.file_id'
+        ' JOIN labels l ON l.id=fl.label_id'
+        ' WHERE fl.file_id=? AND f.user_id=? AND l.user_id=?',
+        (fid, user_id, user_id)).fetchall()
+    conn.close()
+    return [r['label_id'] for r in rows]
+
+
+def add_file_labels(fid, user_id, label_ids):
+    """Tambah label ke file (union). Kembalikan jumlah yang ditambahkan."""
+    label_ids = [int(x) for x in (label_ids or [])]
+    if not label_ids:
+        return 0
+    conn = get_db()
+    # validasi: file milik user & label milik user
+    f = conn.execute('SELECT id FROM files WHERE id=? AND user_id=?', (fid, user_id)).fetchone()
+    if not f:
+        conn.close()
+        return 0
+    ok = conn.execute('SELECT id FROM labels WHERE user_id=? AND id IN (%s)' % ','.join('?' * len(label_ids)),
+                      (user_id, *label_ids)).fetchall()
+    n = 0
+    for r in ok:
+        try:
+            conn.execute('INSERT OR IGNORE INTO file_labels (label_id, file_id) VALUES (?,?)',
+                         (r['id'], fid))
+            n += 1
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()
+    return n
+
+
+def remove_file_labels(fid, user_id, label_ids):
+    label_ids = [int(x) for x in (label_ids or [])]
+    if not label_ids:
+        return
+    conn = get_db()
+    conn.execute('DELETE FROM file_labels WHERE file_id=? AND label_id IN (%s)'
+                 ' AND file_id IN (SELECT id FROM files WHERE id=? AND user_id=?)'
+                 % ','.join('?' * len(label_ids)),
+                 (fid, *label_ids, fid, user_id))
+    conn.commit()
+    conn.close()
+
+
 def delete_file(fid, user_id):
     conn = get_db()
     conn.execute('DELETE FROM shares WHERE file_id=? AND user_id=?', (fid, user_id))
+    conn.execute('DELETE FROM file_labels WHERE file_id=?', (fid,))
     conn.execute('DELETE FROM files WHERE id=? AND user_id=?', (fid, user_id))
     conn.commit()
     conn.close()
@@ -1298,3 +1466,109 @@ def consume_transfer_token(token_hash, purpose, single_use=True):
         conn.commit()
     conn.close()
     return t
+
+
+# ---------- operasi massal (bulk select) ----------
+def bulk_trash_files(user_id, ids):
+    """Pindahkan banyak file ke tong sampah. Kembalikan jumlah berhasil."""
+    ids = [int(x) for x in (ids or [])]
+    if not ids:
+        return 0
+    now = datetime.now().isoformat(timespec='seconds')
+    conn = get_db()
+    cur = conn.execute(
+        'UPDATE files SET trashed=1, trashed_at=? WHERE user_id=? AND trashed=0 AND id IN (%s)'
+        % ','.join('?' * len(ids)), (now, user_id, *ids))
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
+def bulk_trash_folders(user_id, ids):
+    """Pindahkan banyak folder (+isi) ke tong sampah via delete_folder. Kembalikan jumlah."""
+    n = 0
+    for fid in [int(x) for x in (ids or [])]:
+        try:
+            if delete_folder(fid, user_id):
+                n += 1
+        except Exception:
+            pass
+    return n
+
+
+def _folder_descendants(conn, fid, user_id):
+    ids = [fid]
+    i = 0
+    while i < len(ids):
+        rows = conn.execute('SELECT id FROM folders WHERE parent_id=? AND user_id=?',
+                            (ids[i], user_id)).fetchall()
+        ids.extend(r[0] for r in rows)
+        i += 1
+    return set(ids)
+
+
+def bulk_move(user_id, file_ids, folder_ids, dest_folder_id):
+    """Pindahkan file & folder ke folder tujuan (None = root).
+    Tolak folder yang dipindah ke dirinya sendiri/descendant-nya.
+    Kembalikan (n_files, n_folders, skipped)."""
+    file_ids = [int(x) for x in (file_ids or [])]
+    folder_ids = [int(x) for x in (folder_ids or [])]
+    dest = None if dest_folder_id in (None, '', 'root') else int(dest_folder_id)
+    conn = get_db()
+    if dest is not None and not conn.execute(
+            'SELECT 1 FROM folders WHERE id=? AND user_id=?', (dest, user_id)).fetchone():
+        conn.close()
+        raise ValueError('Folder tujuan tidak ditemukan')
+    nf = nfld = skip = 0
+    if file_ids:
+        cur = conn.execute(
+            'UPDATE files SET folder_id=? WHERE user_id=? AND trashed=0 AND id IN (%s)'
+            % ','.join('?' * len(file_ids)), (dest, user_id, *file_ids))
+        nf = cur.rowcount
+    for fid in folder_ids:
+        ok = conn.execute('SELECT 1 FROM folders WHERE id=? AND user_id=?', (fid, user_id)).fetchone()
+        if not ok:
+            skip += 1
+            continue
+        if dest is not None and (dest == fid or dest in _folder_descendants(conn, fid, user_id)):
+            skip += 1
+            continue
+        conn.execute('UPDATE folders SET parent_id=? WHERE id=? AND user_id=?', (dest, fid, user_id))
+        nfld += 1
+    conn.commit()
+    conn.close()
+    return nf, nfld, skip
+
+
+def bulk_favorite(user_id, ids, fav):
+    ids = [int(x) for x in (ids or [])]
+    if not ids:
+        return 0
+    conn = get_db()
+    cur = conn.execute(
+        'UPDATE files SET favorite=? WHERE user_id=? AND trashed=0 AND id IN (%s)'
+        % ','.join('?' * len(ids)), (1 if fav else 0, user_id, *ids))
+    n = cur.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
+def labels_for_files(user_id, file_ids):
+    """Map file_id -> [{id,name,color,icon}] untuk banyak file sekaligus (1 query)."""
+    file_ids = [int(x) for x in (file_ids or [])][:500]
+    if not file_ids:
+        return {}
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT fl.file_id, l.id, l.name, l.color, l.icon FROM file_labels fl'
+        ' JOIN labels l ON l.id=fl.label_id'
+        ' WHERE l.user_id=? AND fl.file_id IN (%s)' % ','.join('?' * len(file_ids)),
+        (user_id, *file_ids)).fetchall()
+    conn.close()
+    m = {}
+    for r in rows:
+        m.setdefault(r['file_id'], []).append(
+            {'id': r['id'], 'name': r['name'], 'color': r['color'], 'icon': r['icon']})
+    return m
