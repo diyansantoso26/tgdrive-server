@@ -47,6 +47,10 @@
   <label>Username Telegram admin (tanpa @, untuk tombol konfirmasi Telegram)
     <input id="tgUser" placeholder="cth gtg_official" style="width:100%">
   </label>
+  <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+    <input type="checkbox" id="chunkedUpload" checked style="width:auto">
+    <span><b>Upload resume/chunked</b><br><span class="muted" style="font-size:.82rem">ON: file &ge;100 MB (PRO) otomatis chunked via jalur langsung. OFF: file besar hanya bisa diupload manual lewat jalur langsung.</span></span>
+  </label>
   <button class="btn primary" onclick="saveSettings()">Simpan</button>
 </div>
 
@@ -136,7 +140,7 @@ async function setQuota(id,cur){const v=prompt('Kuota MB baru:',cur);if(v===null
 async function delUser(id,name){if(!confirm('Hapus "'+name+'" BESERTA SEMUA FILE & BOTNYA?'))return;await j('/api/admin/users/'+id,{method:'DELETE'});loadUsers();loadStats();}
 async function loadInv(){
   const d=await j('/api/admin/invites');
-  $('#regMode').value=d.registration_mode;$('#directUrl').value=d.direct_url||'';$('#domainUrl').value=d.domain_url||'';$('#handoffTtl').value=d.handoff_token_ttl||90;$('#waNumber').value=d.wa_number||'';$('#tgUser').value=d.telegram_username||'';
+  $('#regMode').value=d.registration_mode;$('#directUrl').value=d.direct_url||'';$('#domainUrl').value=d.domain_url||'';$('#handoffTtl').value=d.handoff_token_ttl||90;$('#waNumber').value=d.wa_number||'';$('#tgUser').value=d.telegram_username||'';$('#chunkedUpload').checked=d.chunked_upload!==false;
   $('#priceMonthly').value=(d.prices&&d.prices.license_price_monthly)||'';$('#priceYearly').value=(d.prices&&d.prices.license_price_yearly)||'';$('#priceLifetime').value=(d.prices&&d.prices.license_price_lifetime)||'';
   const tb=$('#invTbl tbody');tb.innerHTML='';
   d.invites.forEach(c=>{
@@ -157,7 +161,7 @@ async function delInv(id){await j('/api/admin/invites/'+id,{method:'DELETE'});lo
 async function togInv(id,a){await j('/api/admin/invites/'+id+'/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:!!a})});loadInv();}
 async function saveSettings(){
   await j('/api/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({registration_mode:$('#regMode').value,direct_url:$('#directUrl').value,domain_url:$('#domainUrl').value,handoff_token_ttl:$('#handoffTtl').value,wa_number:$('#waNumber').value,telegram_username:$('#tgUser').value,
+    body:JSON.stringify({registration_mode:$('#regMode').value,direct_url:$('#directUrl').value,domain_url:$('#domainUrl').value,handoff_token_ttl:$('#handoffTtl').value,wa_number:$('#waNumber').value,telegram_username:$('#tgUser').value,chunked_upload:$('#chunkedUpload').checked,
       license_price_monthly:$('#priceMonthly').value,license_price_yearly:$('#priceYearly').value,license_price_lifetime:$('#priceLifetime').value})});
   alert('Tersimpan');
 }
