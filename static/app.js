@@ -256,10 +256,10 @@ function initDrive(){
     clearTimeout(toastTimer);toastTimer=setTimeout(()=>d.remove(),6000);
   }
   function updateUndoBtns(){
-    const u=document.getElementById('undoBtn'),r=document.getElementById('redoBtn');
-    if(u){u.disabled=!undoStack.length;
+    const u=document.getElementById('ovUndo'),r=document.getElementById('ovRedo');
+    if(u){u.classList.toggle('disabled',!undoStack.length);
       u.title=undoStack.length?('Urungkan: '+undoStack[undoStack.length-1].label+' (Ctrl+Z)'):'Urungkan (Ctrl+Z)'}
-    if(r){r.disabled=!redoStack.length;
+    if(r){r.classList.toggle('disabled',!redoStack.length);
       r.title=redoStack.length?('Ulangi: '+redoStack[redoStack.length-1].label+' (Ctrl+Shift+Z)'):'Ulangi (Ctrl+Shift+Z)'}
   }
   function pushUndo(label,undoFn,redoFn){
@@ -278,9 +278,9 @@ function initDrive(){
     catch(e){toast('Gagal mengulangi: '+e.message)}
     await loadFolders();load();updateUndoBtns();
   }
-  const _ub=document.getElementById('undoBtn'),_rb=document.getElementById('redoBtn');
-  if(_ub)_ub.onclick=doUndo;
-  if(_rb)_rb.onclick=doRedo;
+  const _ub=document.getElementById('ovUndo'),_rb=document.getElementById('ovRedo');
+  if(_ub)_ub.onclick=()=>{if(undoStack.length)doUndo()};
+  if(_rb)_rb.onclick=()=>{if(redoStack.length)doRedo()};
   document.addEventListener('keydown',e=>{
     if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=='z')return;
     if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement&&document.activeElement.tagName||''))return;
@@ -354,17 +354,16 @@ function initDrive(){
     return chain;
   }
   function renderCrumbs(){
-    const bB=document.getElementById('navBack'),bF=document.getElementById('navFwd'),bU=document.getElementById('navUp');
-    if(bB)bB.disabled=S.trash?false:navIdx===0;
-    if(bF)bF.disabled=navIdx>=navHist.length-1;
-    if(bU)bU.disabled=S.trash?false:S.folder==='root';
-    let h='<button class="crumb'+(S.folder==='root'&&!S.trash?' on':'')+'" data-f="root"><span class="mi mi-home"></span> Drive Saya</button>';
+    const upBtn=(S.trash||S.folder!=='root')?'<button class="crumb upbtn" id="crumbUp" title="Naik ke folder induk"><span class="mi mi-arrow-upward"></span></button>':'';
+    let h=upBtn+'<button class="crumb'+(S.folder==='root'&&!S.trash?' on':'')+'" data-f="root"><span class="mi mi-home"></span> Drive Saya</button>';
     if(!S.trash&&S.folder!=='root'){
       h+=folderChain(S.folder).map(f=>'<span class="csep">›</span><button class="crumb'+(String(S.folder)===String(f.id)?' on':'')+'" data-f="'+f.id+'"><span class="mi mi-folder"></span> '+esc(f.name)+'</button>').join('');
     }
     if(S.trash)h+='<span class="csep">›</span><button class="crumb on" data-f="__trash"><span class="mi mi-delete"></span> Tong Sampah</button>';
     crumbs.innerHTML=h;
-    crumbs.querySelectorAll('button').forEach(b=>b.onclick=()=>{const v=b.dataset.f;
+    const cu=document.getElementById('crumbUp');
+    if(cu)cu.onclick=e=>{e.stopPropagation();navUp()};
+    crumbs.querySelectorAll('button[data-f]').forEach(b=>b.onclick=()=>{const v=b.dataset.f;
       if(v==='__trash'){S.trash=true;exitSelMode();renderCrumbs();load()}
       else if(v==='root')navGo('root');
       else openFolder(v)})}
@@ -1206,14 +1205,30 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     }
     document.getElementById('fileInput').click();
   };
-  document.getElementById('sort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;load()};
+  /* sort: dropdown icon */
+  const sortDrop=document.getElementById('sortDrop');
+  function markSort(){if(sortDrop)sortDrop.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.sort===S.sort+'-'+S.order))}
+  if(sortDrop){
+    sortDrop.querySelectorAll('button').forEach(b=>b.onclick=()=>{const[s,o]=b.dataset.sort.split('-');S.sort=s;S.order=o;sortDrop.classList.add('hidden');markSort();load()});
+    /* tandai opsi aktif saat dropdown dibuka */
+    document.getElementById('sortBtn').addEventListener('click',()=>setTimeout(markSort,0));
+  }
   let qt;document.getElementById('q').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();load()},350)};
   document.getElementById('viewToggle').onclick=e=>{S.view=S.view==='grid'?'list':'grid';e.currentTarget.innerHTML='<span class="mi '+(S.view==='grid'?'mi-grid-view':'mi-view-list')+'"></span>';load()};
-  /* navbar explorer */
-  document.getElementById('navBack').onclick=navBack;
-  document.getElementById('navFwd').onclick=navFwd;
-  document.getElementById('navUp').onclick=navUp;
-  document.getElementById('navRefresh').onclick=e=>{const b=e.currentTarget;b.classList.remove('spinning');void b.offsetWidth;b.classList.add('spinning');loadFolders();load();loadStorage();setTimeout(()=>b.classList.remove('spinning'),750)};
+  /* search expand */
+  const sTog=document.getElementById('searchToggle'),sExp=document.getElementById('searchExp'),
+        sBack=document.getElementById('searchBack'),sClose=document.getElementById('searchClose'),
+        sInput=document.getElementById('q'),tool1=document.querySelector('.toolbar1');
+  function searchOpen(){if(tool1)tool1.classList.add('hidden');if(sExp)sExp.classList.remove('hidden');if(sInput)sInput.focus()}
+  function searchCloseFn(){if(sExp)sExp.classList.add('hidden');if(tool1)tool1.classList.remove('hidden');if(sInput&&sInput.value){sInput.value='';S.q='';load()}}
+  if(sTog)sTog.onclick=searchOpen;
+  if(sBack)sBack.onclick=searchCloseFn;
+  if(sClose)sClose.onclick=searchCloseFn;
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sExp&&!sExp.classList.contains('hidden'))searchCloseFn()});
+  /* menu ⋯: navigasi & aksi */
+  const ovR=document.getElementById('ovRefresh'),ovF=document.getElementById('ovFwd');
+  if(ovR)ovR.onclick=()=>{document.getElementById('ovDrop').classList.add('hidden');loadFolders();load();loadStorage()};
+  if(ovF)ovF.onclick=()=>{document.getElementById('ovDrop').classList.add('hidden');navFwd()};
   /* mode pilih banyak — via tahan lama (HP) atau ⋯ → Pilih banyak (desktop) */
   const ovSel=document.getElementById('ovSelBtn');
   if(ovSel)ovSel.onclick=()=>sel.mode?exitSelMode():enterSelMode();
