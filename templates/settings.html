@@ -13,7 +13,7 @@
     <li>Dapatkan <b>ID channel</b>: forward satu pesan dari channel ke <b>@userinfobot</b> (ID diawali <code>-100</code>).</li>
     <li>Kirim satu pesan apa saja di channel (mis. "tes"), supaya bot "kenal" channel.</li>
     <li>Isi form di bawah → klik <b>Tes Koneksi</b> → bila OK klik <b>Simpan Akun</b>.</li>
-    <li>File di atas ±100 MB sebaiknya diupload lewat <b>⚡ Mode Besar</b> (khusus PRO) agar tidak kena batas Cloudflare.</li>
+    <li>File di atas 100 MB (khusus PRO) otomatis diupload lewat jalur langsung — tidak perlu pengaturan khusus.</li>
   </ol>
 </details>
 
@@ -93,4 +93,21 @@
 {% endblock %}
 {% block scripts %}
 <script>initSettings();</script>
-{% endblock %}
+{% if is_pro %}
+<script>
+// Fallback darurat PRO: buka jalur langsung manual (bila upload besar otomatis bermasalah)
+(function(){
+  const c=document.createElement('div');
+  c.className='muted';c.style.cssText='max-width:560px;margin:18px 0 0;font-size:.8rem;text-align:center';
+  c.innerHTML='Bermasalah dengan upload besar? <a href="#" id="emgDirect" style="color:var(--acc)">⚡ Buka jalur langsung (darurat)</a>';
+  document.body.appendChild(c);
+  document.getElementById('emgDirect').onclick=async e=>{
+    e.preventDefault();
+    try{const l=await(await fetch('/api/upload-limits')).json();
+      if(l.direct_url)(window.handoffGo||function(b){location.href=b})(l.direct_url);
+      else alert('Jalur langsung belum diatur admin.');
+    }catch(err){alert('Gagal: '+err.message)}
+  };
+})();
+</script>
+{% endif %}
