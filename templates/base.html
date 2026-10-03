@@ -20,14 +20,13 @@
     {% endif %}
     {% if nav_is_admin %}<a href="{{ url_for('admin_page') }}" class="{% if active=='admin' %}on{% endif %}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>Admin</a>{% endif %}
   </nav>
-  <span id="storageInfo" class="storage"></span>
   <span id="livepill" class="livepill hidden" title="Upload berjalan — klik untuk lihat"></span>
   <div class="accwrap">
     <button class="avatar" id="accBtn" title="{{ nav_display_name }}">{{ (nav_display_name or '?')[:1].upper() }}</button>
     <div class="accdrop hidden" id="accDrop">
       <div class="acchead">
         <div class="avatar lg">{{ (nav_display_name or '?')[:1].upper() }}</div>
-        <div><div class="accname">{{ nav_display_name }}</div><div class="accuser">@{{ nav_username }}</div>{% if nav_is_pro %}<span class="probadge">⚡ PRO</span>{% endif %}</div>
+        <div><div class="accname">{{ nav_display_name }}</div><div class="accuser">@{{ nav_username }}</div>{% if nav_is_pro %}<span class="probadge"><span class="mi mi-bolt"></span> PRO</span>{% endif %}</div>
       </div>
       <a class="accmi" id="accRename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Ubah nama tampilan</a>
       <a class="accmi" href="{{ url_for('settings') }}#akun"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Akun Telegram</a>
@@ -54,9 +53,9 @@
 {% block content %}{% endblock %}
 </main>
 <div id="lightbox" class="lightbox hidden">
-  <button class="lb-close" onclick="closeLightbox()">✕</button>
-  <button class="lb-prev" onclick="lbNav(-1)">‹</button>
-  <button class="lb-next" onclick="lbNav(1)">›</button>
+  <button class="lb-close" onclick="closeLightbox()"><span class="mi mi-close"></span></button>
+  <button class="lb-prev" onclick="lbNav(-1)"><span class="mi mi-chevron-left"></span></button>
+  <button class="lb-next" onclick="lbNav(1)"><span class="mi mi-chevron-right"></span></button>
   <div id="lbBody" class="lb-body"></div>
   <div id="lbCap" class="lb-cap"></div>
 </div>
