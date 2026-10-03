@@ -55,6 +55,50 @@ function initDrive(){
   const unlocked=new Set(); // id folder yang sudah dibuka dgn PIN sesi ini
   api('/api/lock/status').then(r=>{(r.unlocked||[]).forEach(id=>unlocked.add(+id))}).catch(()=>{});
 
+  /* ---------- undo / redo ---------- */
+  const undoStack=[],redoStack=[];
+  let toastTimer=null;
+  function toast(msg,actionLabel,actionFn){
+    document.querySelectorAll('.utoast').forEach(t=>t.remove());
+    const d=document.createElement('div');d.className='utoast';
+    const s=document.createElement('span');s.textContent=msg;d.appendChild(s);
+    if(actionLabel){const b=document.createElement('button');b.textContent=actionLabel;
+      b.onclick=()=>{d.remove();actionFn&&actionFn()};d.appendChild(b)}
+    document.body.appendChild(d);
+    clearTimeout(toastTimer);toastTimer=setTimeout(()=>d.remove(),6000);
+  }
+  function updateUndoBtns(){
+    const u=document.getElementById('undoBtn'),r=document.getElementById('redoBtn');
+    if(u){u.disabled=!undoStack.length;
+      u.title=undoStack.length?('Urungkan: '+undoStack[undoStack.length-1].label+' (Ctrl+Z)'):'Urungkan (Ctrl+Z)'}
+    if(r){r.disabled=!redoStack.length;
+      r.title=redoStack.length?('Ulangi: '+redoStack[redoStack.length-1].label+' (Ctrl+Shift+Z)'):'Ulangi (Ctrl+Shift+Z)'}
+  }
+  function pushUndo(label,undoFn,redoFn){
+    undoStack.push({label,undo:undoFn,redo:redoFn});
+    redoStack.length=0;updateUndoBtns();
+  }
+  async function doUndo(){
+    const a=undoStack.pop();if(!a)return;
+    try{await a.undo();redoStack.push(a);toast('Dibatalkan: '+a.label,'Ulangi',doRedo)}
+    catch(e){toast('Gagal membatalkan: '+e.message)}
+    await loadFolders();load();updateUndoBtns();
+  }
+  async function doRedo(){
+    const a=redoStack.pop();if(!a)return;
+    try{await a.redo();undoStack.push(a);toast('Diulangi: '+a.label,'Urungkan',doUndo)}
+    catch(e){toast('Gagal mengulangi: '+e.message)}
+    await loadFolders();load();updateUndoBtns();
+  }
+  const _ub=document.getElementById('undoBtn'),_rb=document.getElementById('redoBtn');
+  if(_ub)_ub.onclick=doUndo;
+  if(_rb)_rb.onclick=doRedo;
+  document.addEventListener('keydown',e=>{
+    if(!(e.ctrlKey||e.metaKey)||e.key.toLowerCase()!=='z')return;
+    if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement&&document.activeElement.tagName||''))return;
+    e.preventDefault();e.shiftKey?doRedo():doUndo();
+  });
+
   async function openFolder(fid){
     fid=+fid;
     const f=S.folders.find(x=>+x.id===fid);
@@ -191,12 +235,32 @@ function initDrive(){
   async function act(a,it){
     try{
       if(a==='dl')location.href='/file/'+it.id+'/download';
-      else if(a==='trash'&&confirm('Pindahkan "'+it.name+'" ke tong sampah?')){await api('/api/files/'+it.id+'/trash',{method:'POST'});load()}
-      else if(a==='restore'){await api('/api/files/'+it.id+'/restore',{method:'POST'});load()}
+      else if(a==='trash'&&confirm('Pindahkan "'+it.name+'" ke tong sampah?')){
+        await api('/api/files/'+it.id+'/trash',{method:'POST'});load();
+        pushUndo('pindahkan "'+it.name+'" ke tong sampah',
+          ()=>api('/api/files/'+it.id+'/restore',{method:'POST'}),
+          ()=>api('/api/files/'+it.id+'/trash',{method:'POST'}));
+        toast('"'+it.name+'" dipindah ke tong sampah.','Urungkan',doUndo);
+      }
+      else if(a==='restore'){
+        await api('/api/files/'+it.id+'/restore',{method:'POST'});load();
+        pushUndo('kembalikan "'+it.name+'" dari tong sampah',
+          ()=>api('/api/files/'+it.id+'/trash',{method:'POST'}),
+          ()=>api('/api/files/'+it.id+'/restore',{method:'POST'}));
+        toast('"'+it.name+'" dikembalikan.','Urungkan',doUndo);
+      }
       else if(a==='del'&&confirm('HAPUS PERMANEN "'+it.name+'"?\nFile juga dihapus dari channel Telegram dan tidak bisa dikembalikan.')){await api('/api/files/'+it.id,{method:'DELETE'});load()}
       else if(a==='fav'){await api('/api/files/'+it.id+'/favorite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fav:!it.favorite})});load()}
       else if(a==='props')showFileProps(it);
-      else if(a==='rename'){const n=await askName('Ganti nama file',it.name);if(n&&n!==it.name){await api('/api/files/'+it.id+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});load()}}
+      else if(a==='rename'){const n=await askName('Ganti nama file',it.name);
+        if(n&&n!==it.name){
+          const old=it.name;
+          await api('/api/files/'+it.id+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});load();
+          pushUndo('ganti nama jadi "'+n+'"',
+            ()=>api('/api/files/'+it.id+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:old})}),
+            ()=>api('/api/files/'+it.id+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}));
+          toast('Nama diubah jadi "'+n+'".','Urungkan',doUndo);
+        }}
       else if(a==='share'){
         const m=modal('<h3>Bagikan "'+esc(it.name)+'"</h3><label style="font-size:.85rem;color:var(--muted)">Berlaku (jam)</label><input id="shHours" type="number" value="24" min="1" max="720"><div class="row"><button class="btn" onclick="this.closest(\'.modal\').remove()">Batal</button><button class="btn primary" id="shGo">Buat Link</button></div><div id="shOut"></div>');
         m.querySelector('#shGo').onclick=async()=>{const r=await api('/api/share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:it.id,hours:+m.querySelector('#shHours').value||24})});
@@ -242,7 +306,13 @@ function initDrive(){
     try{
       if(a==='rename'){
         const n=await askName('Ganti nama folder',name);
-        if(n&&n!==name){await api('/api/folders/'+fid+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});await loadFolders();load()}
+        if(n&&n!==name){
+          await api('/api/folders/'+fid+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});await loadFolders();load();
+          pushUndo('ganti nama folder jadi "'+n+'"',
+            ()=>api('/api/folders/'+fid+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}),
+            ()=>api('/api/folders/'+fid+'/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})}));
+          toast('Folder diubah jadi "'+n+'".','Urungkan',doUndo);
+        }
       }else if(a==='props'){showFolderProps(fid)}
       else if(a==='lock'){
         await api('/api/folders/'+fid+'/lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({locked:true})});
@@ -457,7 +527,16 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   let qt;document.getElementById('q').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();load()},350)};
   document.getElementById('viewToggle').onclick=e=>{S.view=S.view==='grid'?'list':'grid';e.target.textContent=S.view==='grid'?'▦':'☰';load()};
   document.getElementById('newFolderBtn').onclick=()=>{const m=modal('<h3>Folder baru</h3><input id="nfName" placeholder="Nama folder"><div class="row"><button class="btn" onclick="this.closest(\'.modal\').remove()">Batal</button><button class="btn primary" id="nfGo">Buat</button></div>');
-    m.querySelector('#nfGo').onclick=async()=>{const n=m.querySelector('#nfName').value.trim();if(!n)return;await api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:S.folder==='root'?null:S.folder})});m.remove();await loadFolders();load()}};
+    m.querySelector('#nfGo').onclick=async()=>{const n=m.querySelector('#nfName').value.trim();if(!n)return;
+      const r=await api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:S.folder==='root'?null:S.folder})});
+      m.remove();await loadFolders();load();
+      const newId=r&&r.folder&&r.folder.id;
+      if(newId){
+        pushUndo('buat folder "'+n+'"',
+          ()=>api('/api/folders/'+newId,{method:'DELETE'}),
+          ()=>api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:S.folder==='root'?null:S.folder})}));
+        toast('Folder "'+n+'" dibuat.','Urungkan',doUndo);
+      }}};
   document.getElementById('trashBtn').onclick=()=>{S.trash=true;S.folder='root';renderCrumbs();load()};
 
   document.addEventListener('click',e=>{if(!e.target.closest('#ctxmenu'))hideCtxMenu()});
