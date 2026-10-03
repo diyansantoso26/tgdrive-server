@@ -1199,6 +1199,12 @@ def api_upload_init():
     if client_key:
         old = db.get_upload_session_by_client_key(client_key, uid())
         if old:
+            # sinkronkan overwrite_id bila berubah (mis. user pilih Timpa saat retry)
+            try:
+                if overwrite_id != old['overwrite_id']:
+                    db.set_upload_session_overwrite(old['id'], overwrite_id)
+            except Exception:
+                pass
             try:
                 rec = json.loads(old['received'] or '[]')
             except Exception:
