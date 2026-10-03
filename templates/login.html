@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Masuk — TG Drive{% endblock %}
+{% block content %}
+<div class="login-card">
+  <h1>TG<span>Drive</span></h1>
+  <p class="muted">Penyimpanan cloud pribadi berbasis Telegram</p>
+  {% if err %}<div class="err">{{ err }}</div>{% endif %}
+  {% if not hide_form %}
+  <form method="post">
+    <input type="text" name="username" placeholder="Username" autofocus required autocomplete="username">
+    <input type="password" name="password" placeholder="Password" required autocomplete="current-password">
+    <button class="btn primary" type="submit">Masuk</button>
+  </form>
+  <p class="muted" style="margin-top:12px">Belum punya akun? <a href="{{ url_for('register') }}">Daftar</a></p>
+  {% endif %}
+</div>
+<style>.topbar,.warnbar{display:none}.wrap{max-width:420px;padding-top:12vh}</style>
+{% endblock %}
