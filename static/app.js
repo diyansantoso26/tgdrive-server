@@ -712,16 +712,21 @@ function initDrive(){
     if(upCtxs.size){
       upEnsureHead();
       const bar=document.getElementById('upTotalBar'),txt=document.getElementById('upTotalTxt'),
-            ttl=document.getElementById('upHeadTitle'),pb=document.getElementById('upPauseAll');
+            ttl=document.getElementById('upHeadTitle'),pb=document.getElementById('upPauseAll'),
+            cb=document.getElementById('upCancelAll');
       if(bar)bar.style.width=(tot?Math.round(done/tot*100):0)+'%';
       if(txt)txt.textContent=fmtB(done)+' dari '+fmtB(tot)+(spd>0?' • '+fmtSpd(spd):'')
         +(spd>0&&done<tot?' • sisa '+fmtETA((tot-done)/spd):'');
       if(ttl)ttl.textContent='Mengupload '+n+' file';
-      if(pb)pb.textContent=[...upCtxs].every(c=>c.paused||c.cancelled)?'Lanjut semua':'Jeda semua';
+      if(pb){pb.textContent=[...upCtxs].every(c=>c.paused||c.cancelled)?'Lanjut semua':'Jeda semua';pb.style.display=''}
+      if(cb)cb.style.display='';
     }else if(rows){
+      upEnsureHead();
       const ttl2=document.getElementById('upHeadTitle'),txt2=document.getElementById('upTotalTxt'),
-            bar2=document.getElementById('upTotalBar');
+            bar2=document.getElementById('upTotalBar'),pb2=document.getElementById('upPauseAll'),
+            cb2=document.getElementById('upCancelAll');
       if(ttl2)ttl2.textContent='Antrean upload';if(txt2)txt2.textContent='';if(bar2)bar2.style.width='0%';
+      if(pb2)pb2.style.display='none';if(cb2)cb2.style.display='none';
     }else q.classList.add('hidden');
     liveRefresh();
   }
