@@ -286,6 +286,8 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .explnav button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-size:1rem;cursor:pointer}
 .explnav button:hover:not(:disabled){border-color:var(--acc)}
 .explnav button:disabled{opacity:.3;cursor:default}
+.explnav button.spinning .mi{animation:spin .7s linear}
+@keyframes spin{to{transform:rotate(360deg)}}
 .crumbs.pill{display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:4px 8px;min-width:0}
 .crumbs.pill::-webkit-scrollbar{display:none}
 .crumbs.pill .crumb{background:none;border:0;color:var(--muted);font-size:.84rem;font-weight:600;padding:7px 10px;border-radius:999px;cursor:pointer;white-space:nowrap;font-family:inherit}
