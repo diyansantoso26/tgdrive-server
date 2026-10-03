@@ -1427,6 +1427,14 @@ def set_upload_session_status(sid, status, result_file_id=None):
     conn.close()
 
 
+def set_upload_session_overwrite(sid, overwrite_id):
+    conn = get_db()
+    conn.execute('UPDATE upload_sessions SET overwrite_id=? WHERE id=?',
+                 (overwrite_id, sid))
+    conn.commit()
+    conn.close()
+
+
 def delete_upload_session(sid):
     conn = get_db()
     conn.execute('DELETE FROM upload_sessions WHERE id=?', (sid,))
