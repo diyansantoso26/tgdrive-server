@@ -56,7 +56,7 @@ initDrive();
       const r=await fetch('/api/server-info'); const d=await r.json();
       if(!r.ok) throw new Error(d.error||r.status);
       if(!d.direct_url){ bar.textContent='Jalur langsung belum diatur admin.'; bar.classList.remove('hidden'); return; }
-      location.href=d.direct_url+location.pathname+location.search;
+      (window.handoffGo||function(b){location.href=b+location.pathname+location.search})(d.direct_url);
     }catch(e){ alert('Gagal: '+e.message); }
   });
 })();
@@ -79,7 +79,7 @@ initDrive();
         try{await fetch('/api/max-speed',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_speed:false})})}catch(e){}
       };
       setTimeout(()=>{
-        if(!cancelled) location.href=d.direct_url+location.pathname+location.search;
+        if(!cancelled) (window.handoffGo||function(b){location.href=b+location.pathname+location.search})(d.direct_url);
       },2500);
     }catch(e){}
   })();
