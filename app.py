@@ -874,6 +874,13 @@ def api_file_rename(fid):
     return jsonify({'ok': True})
 
 
+@app.route('/api/duplicates')
+@login_required
+def api_duplicates():
+    """Pindai grup file duplikat (nama+ukuran+folder sama)."""
+    return jsonify({'groups': db.find_duplicates(uid())})
+
+
 @app.route('/api/check-duplicate', methods=['POST'])
 @login_required
 def api_check_duplicate():
