@@ -128,7 +128,7 @@ label.btn{cursor:pointer}
   .wrap{padding:14px 12px 60px}
   .topbar{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}
   .topbar nav{order:3;width:100%;overflow-x:auto}
-  .toolbar .tools{flex-wrap:wrap;gap:8px}
+  .toolbar .tools{gap:8px}
   .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
   .tl-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
   .login-card{margin:20px 12px}
@@ -213,7 +213,8 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .locknote{font-size:.8rem;color:var(--muted);padding:6px 2px}
 
 /* ---- menu akun ---- */
-.accwrap{position:relative;margin-left:auto}
+.accwrap{position:relative;margin-left:auto;display:flex;align-items:center;gap:8px}
+.top-pro{font-size:.72rem;font-weight:700;padding:6px 10px;border-radius:20px;white-space:nowrap}
 .storage{margin-left:0}
 .avatar{width:34px;height:34px;border-radius:50%;background:var(--acc);color:var(--onacc);border:0;
   display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;cursor:pointer;flex:none}
@@ -259,10 +260,10 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 /* tombol toolbar */
 .tbtn.on{border-color:var(--acc);color:var(--ink)}
 .tbtn:disabled{opacity:.35;cursor:default}
-/* menu overflow (⋯) */
+/* menu overflow (⋯) — fixed agar tidak terpotong overflow parent (Android) */
 .ovwrap{position:relative}
-.ovdrop{position:absolute;top:40px;right:0;min-width:200px;background:var(--card);border:1px solid var(--line);
-  border-radius:12px;box-shadow:0 12px 32px #0007;z-index:70;overflow:hidden;padding:4px}
+.ovdrop{position:fixed;min-width:210px;max-width:calc(100vw - 16px);background:var(--card);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 32px #0007;z-index:200;overflow:hidden;padding:4px}
 .ovdrop .accmi{border-radius:8px}
 @media(max-width:720px){.topbar{gap:12px;padding:0 12px}.topbar nav a{padding:8px 9px;font-size:.82rem}}
 
@@ -312,9 +313,9 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .ss-warn a{color:#b45309;font-weight:700}
 .ss-warn.crit{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.45);color:#dc2626}
 .ss-warn.crit a{color:#dc2626}
-/* dropdown tombol (upload / baru) */
+/* dropdown tombol (upload / baru) — fixed agar tidak terpotong overflow parent (Android) */
 .dpwrap{position:relative}
-.dpdrop{position:absolute;top:calc(100% + 6px);right:0;min-width:230px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:60}
+.dpdrop{position:fixed;min-width:230px;max-width:calc(100vw - 16px);background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);padding:6px;z-index:200}
 .dpdrop button{display:flex;width:100%;gap:10px;align-items:center;background:none;border:0;color:var(--ink);padding:10px 12px;border-radius:8px;cursor:pointer;font-size:.88rem;font-family:inherit;text-align:left}
 .dpdrop button:hover{background:var(--bg2)}
 .dpdrop button .ic{font-size:1.2rem}
@@ -417,14 +418,12 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .ovdiv{height:1px;background:var(--line);margin:5px 8px;opacity:.7}
 .crumb.upbtn{padding:6px 9px;color:var(--acc);font-weight:700}
 .accmi.disabled{opacity:.35;pointer-events:none}
-/* mobile: tombol sedikit lebih ramping */
+/* mobile: ikon baris bawah lebih kecil agar muat sebaris */
 @media(max-width:480px){
-  .tools.toolbar1{gap:6px;overflow-x:auto;scrollbar-width:none}
-  .tools.toolbar1::-webkit-scrollbar{display:none}
+  .tools.toolbar1{gap:4px}
+  .tools.toolbar1 .icobtn{width:34px;height:34px;font-size:1.05rem;border-radius:10px}
+  .tools.toolbar1 .explnav button{width:34px;height:34px;font-size:1rem}
   .tools.toolbar-top{gap:6px}
-  .btn-new{height:40px;padding:0 12px 0 10px;font-size:.78rem}
-  .btn-new .plus{width:20px;height:20px;font-size:.85rem}
-  .icobtn{width:40px;height:40px;font-size:1.05rem}
   .tools.toolbar-top .crumbs{font-size:.74rem}
 }
 .tdiv{width:1px;height:26px;align-self:center;background:var(--line);opacity:.8;flex-shrink:0}

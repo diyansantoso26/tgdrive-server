@@ -4,6 +4,14 @@
 {% block content %}
 <div class="toolbar">
   <div class="tools toolbar-top">
+    <div class="dpwrap">
+      <button class="icobtn primary" id="newBtn" title="Baru"><span class="mi mi-add"></span></button>
+      <div class="dpdrop hidden" id="newDrop">
+        <button id="newTxt"><span class="ic"><span class="mi mi-description"></span></span><span>File teks<small>.txt — catatan polos</small></span></button>
+        <button id="newMd"><span class="ic"><span class="mi mi-edit-note"></span></span><span>Markdown<small>.md — dengan pratinjau</small></span></button>
+        <button id="newFolderBtn"><span class="ic"><span class="mi mi-folder"></span></span><span>Folder baru</span></button>
+      </div>
+    </div>
     <div class="crumbs pill" id="crumbs"></div>
     <button class="icobtn" id="searchToggle" title="Cari"><span class="mi mi-search"></span></button>
   </div>
@@ -15,14 +23,6 @@
     </div>
     <button class="icobtn" id="undoBtnT" title="Urungkan (Ctrl+Z)"><span class="mi mi-undo"></span></button>
     <button class="icobtn" id="redoBtnT" title="Ulangi (Ctrl+Shift+Z)"><span class="mi mi-redo"></span></button>
-    <div class="dpwrap">
-      <button class="btn-new" id="newBtn"><span class="plus">+</span>New</button>
-      <div class="dpdrop hidden" id="newDrop">
-        <button id="newTxt"><span class="ic"><span class="mi mi-description"></span></span><span>File teks<small>.txt — catatan polos</small></span></button>
-        <button id="newMd"><span class="ic"><span class="mi mi-edit-note"></span></span><span>Markdown<small>.md — dengan pratinjau</small></span></button>
-        <button id="newFolderBtn"><span class="ic"><span class="mi mi-folder"></span></span><span>Folder baru</span></button>
-      </div>
-    </div>
     <div class="dpwrap">
       <button class="icobtn" id="sortBtn" title="Urutkan"><span class="mi mi-sort"></span></button>
       <div class="dpdrop hidden" id="sortDrop">
@@ -103,15 +103,28 @@
 {% block scripts %}
 <script>
 initDrive();
+// Posisi dropdown fixed agar tidak terpotong & tidak keluar layar (Android)
+function placeDrop(btn,d){
+  const r=btn.getBoundingClientRect();
+  d.style.top=(r.bottom+6+window.scrollY)+'px';
+  // ukur lebar dulu (sementara tampilkan off-screen)
+  d.style.visibility='hidden';d.classList.remove('hidden');
+  const w=d.offsetWidth||230;
+  let left=r.left;
+  if(left+w>window.innerWidth-8)left=r.right-w; // rata kanan bila di tepi
+  d.style.left=Math.max(8,left)+'px';
+  d.style.visibility='';
+}
 // Menu ⋯ (Pilih banyak + Tong Sampah)
 (function(){
   const b=document.getElementById('ovBtn'),d=document.getElementById('ovDrop');
   if(!b||!d)return;
-  b.addEventListener('click',e=>{e.stopPropagation();d.classList.toggle('hidden')});
+  b.addEventListener('click',e=>{e.stopPropagation();
+    if(d.classList.contains('hidden'))placeDrop(b,d);else d.classList.add('hidden')});
   document.addEventListener('click',e=>{if(!d.classList.contains('hidden')&&!e.target.closest('.ovwrap'))d.classList.add('hidden')});
   d.addEventListener('click',()=>d.classList.add('hidden'));
 })();
-// Dropdown Upload & ＋Baru
+// Dropdown Upload & ＋Baru & Sort
 (function(){
   const pairs=[['upBtn','upDrop'],['newBtn','newDrop'],['sortBtn','sortDrop']];
   pairs.forEach(([b,dd])=>{
@@ -119,7 +132,7 @@ initDrive();
     if(!btn||!d)return;
     btn.addEventListener('click',e=>{e.stopPropagation();
       document.querySelectorAll('.dpdrop').forEach(x=>{if(x!==d)x.classList.add('hidden')});
-      d.classList.toggle('hidden')});
+      if(d.classList.contains('hidden'))placeDrop(btn,d);else d.classList.add('hidden')});
   });
   document.addEventListener('click',e=>{if(!e.target.closest('.dpwrap'))document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'))});
   document.getElementById('upFolderBtn').onclick=()=>{document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));document.getElementById('folderInput').click()};
