@@ -1,0 +1,29 @@
+# Rahasia & data — JANGAN PERNAH di-commit
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/cache/
+data/thumbs/
+data/tmp/
+
+# Biner rilis (ada di repo masing-masing)
+apk/
+*.apk
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Build & log
+build/
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
