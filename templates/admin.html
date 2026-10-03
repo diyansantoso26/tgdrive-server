@@ -117,7 +117,7 @@ async function loadUsers(){
   const tb=$('#userTbl tbody');tb.innerHTML='';
   d.users.forEach(u=>{
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${esc(u.username)}${u.role=='admin'?' 👑':''}</td>
+    tr.innerHTML=`<td>${esc(u.display_name||u.username)}${u.display_name?'<br><small class="muted">@'+esc(u.username)+'</small>':''}${u.role=='admin'?' 👑':''}</td>
       <td>${u.role}</td>
       <td><button class="btn sm" onclick="patchUser(${u.id},{is_pro:${u.is_pro?0:1}})">${u.is_pro?'✅':'—'}</button></td>
       <td>${fmtMB(u.quota_mb)} <button class="btn sm" onclick="setQuota(${u.id},${u.quota_mb})">✎</button></td>
