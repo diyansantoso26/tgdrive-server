@@ -158,3 +158,45 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
   besar otomatis gagal + link "Buka jalur langsung (darurat)" di Pengaturan khusus PRO.
 - Kolom baru `upload_sessions.client_key` + `result_file_id` (migrasi otomatis di `db.init_db`).
 - Batas: non-PRO 100 MB/file, PRO 2 GB/file.
+
+## Semua upload via chunked + panel TeraCopy (2026-10-03)
+
+- **Opsi 1 aktif**: semua ukuran file lewat `doUploadChunked()` (file kecil = 1 chunk).
+  Chunk 5 MB (<500 MB) / 10 MB (>=500 MB). Jalur single POST hanya fallback bila
+  admin mematikan `chunked_upload`.
+- Panel upload ala TeraCopy: header "Mengupload N file", progress bar total,
+  total byte, kecepatan, ETA, tombol **Jeda semua** / **Batal semua** / **–** (minimize).
+  Per file: progress, Jeda/Lanjut, Batal, Coba lagi.
+- Saat diminimize: **tombol lingkaran mengambang** di pojok kanan bawah
+  (ganti pill menubar lama) — ikon upload + badge jumlah + ring progres;
+  kuning bila hanya sisa antrean gagal. Klik membuka panel kembali.
+- Panel menampilkan detail tahap per file: **Tahap 1/3** Menyiapkan →
+  **Tahap 2/3** Potongan X/Y → **Tahap 3/3** Mengirim ke Telegram;
+  header "X dari Y selesai"; waktu berjalan per file; pesan "menunggu giliran"
+  bila finalisasi antre >8 detik.
+- Proteksi refresh tak sengaja: `beforeunload` warning + handle file tersimpan
+  (IndexedDB, Chromium desktop) untuk auto-resume. `?nofsa=1` memaksa input file biasa.
+- Tombol **refresh** (⟳) di navbar antara ↑ dan undo: `loadFolders()+load()+loadStorage()`.
+- Dialog duplikat ("File sudah ada": **Lewati** / **Timpa** + ingat pilihan) kini
+  juga muncul di tombol **Coba lagi** (dulu auto-skip diam-diam).
+  `POST /api/upload/init` menyinkronkan `overwrite_id` saat resume via `client_key`.
+
+## Anti-flood Telegram (2026-10-03)
+
+- Masalah: 3 worker paralel → `Too Many Requests: retry after 23-29` → 502 massal.
+- **Antrean server** (`_tg_send_serialized`): kirim ke Telegram **satu per satu per user**
+  (file lock `fcntl`, lintas worker/thread) + jeda 2 detik antar file.
+- **Pengaman**: backend balas HTTP 429 + `retry_after` (bukan 502); client menunggu
+  otomatis sesuai perintah Telegram lalu mengulang (maks 5x, maks 180 dtk/tunggu).
+- Archive chat / pindah channel→DM **tidak** menaikkan limit (limit dihitung server
+  per bot per chat; archive hanya tampilan lokal).
+
+## Retensi file sementara 3 jam (2026-10-03)
+
+- `upload_sessions` TTL 24 jam → **3 jam**; token transfer direct ikut 3 jam.
+- `db.cleanup_upload_sessions()` kini dipanggil dari `/api/upload/init`
+  (maks 1x/30 mnt per worker) — sebelumnya tidak pernah dipanggil.
+- Backup DB tiap deploy (`drive.db.bak-deploy-*`) dirotasi otomatis: **maks 5 terbaru**.
+- Cache unduhan: maks 2 GB, auto-hapus yang terlama (`enforce_cache_limit`).
+- Thumbnail lokal: `data/thumbs/` (~18 KB/file); **tanpa batas otomatis** (dibutuhkan permanen).
+- Cek manual: `sudo du -sh /home/tgdrive/app/data/{thumbs,cache,tmp}`.
