@@ -155,9 +155,10 @@ label.btn{cursor:pointer}
 /* kunci folder */
 .fitem .thumb{position:relative}
 .lk{position:absolute;top:6px;left:6px;font-size:1rem;background:#000a;border-radius:6px;padding:2px 5px}
-.lockrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.lockrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:.9rem}
 .lockrow:last-child{border-bottom:none}
-.lockrow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lockrow .lname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lockrow button{flex:none;padding:7px 12px;font-size:.82rem;white-space:nowrap}
 /* ---- PIN & badge kunci folder ---- */
 .pinwrap{position:relative;margin-bottom:10px}
 .pinwrap input{width:100%;padding-right:44px;margin-bottom:0}
