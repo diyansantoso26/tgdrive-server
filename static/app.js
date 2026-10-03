@@ -814,6 +814,18 @@ function initDrive(){
       m.querySelector('#dupOver').onclick=()=>done('overwrite');
     });
   }
+  /* konfirmasi duplikat saat retry manual: kembalikan {action,overwriteId} atau null bila batal */
+  let retryRemember=null;
+  async function dupConfirmRetry(f,folderId,prevOverwriteId){
+    let chk=null;
+    try{chk=await api('/api/check-duplicate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.name,size:f.size,folder_id:folderId})})}catch(e){}
+    if(!(chk&&chk.duplicate))return{action:'upload',overwriteId:prevOverwriteId};
+    if(retryRemember)return{action:retryRemember,overwriteId:retryRemember==='overwrite'?chk.existing_id:null};
+    const c=await dupDialog(f.name,f.size);
+    if(!c)return null;
+    if(c.remember)retryRemember=c.action;
+    return{action:c.action,overwriteId:c.action==='overwrite'?chk.existing_id:null};
+  }
 
   /* uploadFiles(list): FileList/File[] -> semua ke folder aktif */
   async function uploadFiles(list){
@@ -908,12 +920,12 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       }else{
         row.el.classList.add('err');
         row.status.innerHTML='<span>Gagal: '+esc(msg)+'</span> <button class="btn ghost" style="padding:2px 10px;margin-left:8px">Coba lagi</button>';
-        row.status.querySelector('button').onclick=()=>{
+        row.status.querySelector('button').onclick=async()=>{
           row.status.textContent='Memeriksa duplikat…';
-          dupNow().then(isDup=>{
-            if(isDup)skipDup();
-            else{row.el.remove();doUploadP(f,overwriteId,folderId,1).then(()=>{loadFolders();load()});done();}
-          });
+          const r=await dupConfirmRetry(f,folderId,overwriteId);
+          if(!r){row.status.textContent='Dibatalkan';return}
+          if(r.action==='skip'){skipDup();return}
+          row.el.remove();doUploadP(f,r.overwriteId,folderId,1).then(()=>{loadFolders();load()});done();
         };
       }
     };
@@ -1082,7 +1094,11 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       row.el.classList.add('err');ctl.remove();
       lbl.textContent='Gagal: '+e.message+' ';
       const rb=document.createElement('button');rb.className='btn ghost';rb.style.cssText='padding:2px 10px;font-size:.78rem';rb.textContent='Coba lagi';
-      rb.onclick=()=>{row.el.remove();doUploadChunked(f,overwriteId,folderId,clientKey)};
+      rb.onclick=async()=>{lbl.textContent='Memeriksa duplikat… ';
+        const r=await dupConfirmRetry(f,folderId,overwriteId);
+        if(!r){lbl.textContent='Dibatalkan ';return}
+        if(r.action==='skip'){lbl.textContent='Dilewati (sudah ada) ';setTimeout(()=>{row.el.remove()},2000);return}
+        row.el.remove();doUploadChunked(f,r.overwriteId,folderId,clientKey)};
       row.status.appendChild(rb);
       // fallback kontekstual: pindah manual ke direct bila upload besar otomatis gagal di domain
       if(!ON_DIRECT&&LIM.directUrl&&f.size>=LIM.cfLimit&&LIM.isPro)
