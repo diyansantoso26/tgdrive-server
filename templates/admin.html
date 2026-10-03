@@ -124,10 +124,10 @@ async function loadUsers(){
   const tb=$('#userTbl tbody');tb.innerHTML='';
   d.users.forEach(u=>{
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td>${esc(u.display_name||u.username)}${u.display_name?'<br><small class="muted">@'+esc(u.username)+'</small>':''}${u.role=='admin'?' 👑':''}</td>
+    tr.innerHTML=`<td>${esc(u.display_name||u.username)}${u.display_name?'<br><small class="muted">@'+esc(u.username)+'</small>':''}${u.role=='admin'?'<span class="mi mi-workspace-premium"></span>':''}</td>
       <td>${u.role}</td>
-      <td><button class="btn sm" onclick="patchUser(${u.id},{is_pro:${u.is_pro?0:1}})">${u.is_pro?'✅':'—'}</button></td>
-      <td>${fmtMB(u.quota_mb)} <button class="btn sm" onclick="setQuota(${u.id},${u.quota_mb})">✎</button></td>
+      <td><button class="btn sm" onclick="patchUser(${u.id},{is_pro:${u.is_pro?0:1}})">${u.is_pro?'<span class="mi mi-check-circle"></span>':'—'}</button></td>
+      <td>${fmtMB(u.quota_mb)} <button class="btn sm" onclick="setQuota(${u.id},${u.quota_mb})"><span class="mi mi-edit"></span></button></td>
       <td>${(u.used_bytes/1073741824).toFixed(2)} GB (${u.file_count})</td>
       <td><button class="btn sm" onclick="patchUser(${u.id},{is_active:${u.is_active?0:1}})">${u.is_active?'Aktif':'Nonaktif'}</button></td>
       <td><button class="btn sm danger" onclick="delUser(${u.id},'${esc(u.username)}')">Hapus</button></td>`;
@@ -147,7 +147,7 @@ async function loadInv(){
     const tr=document.createElement('tr');
     tr.innerHTML=`<td><code>${esc(c.code)}</code></td><td>${c.bonus_quota_mb}</td>
       <td>${c.used_count}/${c.max_uses}</td>
-      <td><button class="btn sm" onclick="togInv(${c.id},${c.is_active?0:1})">${c.is_active?'✅':'—'}</button></td>
+      <td><button class="btn sm" onclick="togInv(${c.id},${c.is_active?0:1})">${c.is_active?'<span class="mi mi-check-circle"></span>':'—'}</button></td>
       <td><button class="btn sm danger" onclick="delInv(${c.id})">Hapus</button></td>`;
     tb.appendChild(tr);
   });
@@ -176,7 +176,7 @@ async function loadLic(){
   const tb=$('#licTbl tbody');tb.innerHTML='';
   d.licenses.forEach(c=>{
     const tr=document.createElement('tr');
-    const st=c.status!=='active'?'⛔ dicabut':(c.redeemed_by?('✅ dipakai'+(c.redeemed_username?' '+esc(c.redeemed_username):'')):'— belum dipakai');
+    const st=c.status!=='active'?'<span class="mi mi-block"></span> dicabut':(c.redeemed_by?('<span class="mi mi-check-circle"></span> dipakai'+(c.redeemed_username?' '+esc(c.redeemed_username):'')):'— belum dipakai');
     const exp=c.expires_at?c.expires_at.slice(0,10):'selamanya';
     tr.innerHTML=`<td><code>${esc(c.code)}</code></td><td>${esc(c.nama||c.tier)}</td><td>${st}</td><td>${c.redeemed_at?c.redeemed_at.slice(0,10):'—'}</td><td>${exp}</td>
       <td><button class="btn sm" onclick="togLic(${c.id},${c.status==='active'?0:1})">${c.status==='active'?'Cabut':'Aktifkan'}</button>
