@@ -23,9 +23,6 @@
       <div class="ovdrop hidden" id="ovDrop">
         <a class="accmi" id="trashBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Tong Sampah</a>
         <label class="accmi" for="folderInput"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>Upload folder</label>
-        {% if is_pro %}
-        <a class="accmi" id="directBtn" title="Mode upload besar via jalur langsung (tanpa batas Cloudflare)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Mode Besar</a>
-        {% endif %}
       </div>
     </div>
     <label class="btn primary" for="fileInput">⬆ Upload</label>
@@ -33,7 +30,6 @@
     <input id="folderInput" type="file" webkitdirectory hidden>
   </div>
 </div>
-<div id="directBar" class="warnbar hidden" style="margin-bottom:12px"></div>
 <div id="trashBar" class="trashbar hidden" style="margin-bottom:12px"></div>
 <div id="connBadge" class="muted" style="font-size:.78rem;margin-bottom:10px"></div>
 
@@ -47,7 +43,7 @@
 {% block scripts %}
 <script>
 initDrive();
-// Menu ⋯ (Tong Sampah, Upload folder, Mode Besar)
+// Menu ⋯ (Tong Sampah, Upload folder)
 (function(){
   const b=document.getElementById('ovBtn'),d=document.getElementById('ovDrop');
   if(!b||!d)return;
@@ -62,19 +58,9 @@ initDrive();
     ?'Terhubung via: <b style="color:#ffd98a">⚡ jalur langsung (Max Speed)</b>'
     :'Terhubung via: <b>'+location.host+'</b> <span>🌐 domain</span>';
 })();
-// Mode upload besar (PRO): tombol manual pindah ke jalur langsung
-(function(){
-  const btn=document.getElementById('directBtn'), bar=document.getElementById('directBar');
-  if(!btn) return;
-  btn.addEventListener('click', async ()=>{
-    try{
-      const r=await fetch('/api/server-info'); const d=await r.json();
-      if(!r.ok) throw new Error(d.error||r.status);
-      if(!d.direct_url){ bar.textContent='Jalur langsung belum diatur admin.'; bar.classList.remove('hidden'); return; }
-      (window.handoffGo||function(b){location.href=b+location.pathname+location.search})(d.direct_url);
-    }catch(e){ alert('Gagal: '+e.message); }
-  });
-})();
+// (Mode Besar dihapus dari menu — upload besar kini otomatis. Fallback manual:
+// tombol "Coba via Mode Besar" muncul kontekstual saat upload besar gagal otomatis,
+// + link "Buka jalur langsung (darurat)" di Pengaturan khusus PRO.)
 
 </script>
 {% endblock %}
