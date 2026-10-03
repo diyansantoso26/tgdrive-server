@@ -393,7 +393,10 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .fpick .frow.on{background:rgba(79,140,255,.14)}
 @media(max-width:640px){.explbar{flex-wrap:wrap}.ss-grid{grid-template-columns:repeat(2,1fr)}}
 /* ===== revisi toolbar 2026-10-03: [navigasi] | [undo/redo] | [cari] | [aksi] ===== */
-/* ===== toolbar 1 baris: semua icon (mobile, tablet, desktop) ===== */
+/* ===== toolbar 2 baris: atas breadcrumb+search, bawah semua icon ===== */
+.toolbar{display:flex;flex-direction:column;gap:6px;width:100%}
+.tools.toolbar-top{display:flex;align-items:center;gap:6px;width:100%}
+.tools.toolbar-top .crumbs{flex:1;min-width:0}
 .tools.toolbar1{display:flex;align-items:center;gap:8px;width:100%}
 .btn-new{display:flex;align-items:center;gap:8px;height:42px;padding:0 16px 0 12px;border-radius:12px;border:1px solid var(--acc);background:rgba(47,157,255,.12);color:var(--acc);font-size:.82rem;font-weight:700;cursor:pointer;flex-shrink:0}
 .btn-new:hover{background:rgba(47,157,255,.22)}
@@ -416,11 +419,13 @@ button .mi,.btn .mi{vertical-align:-4px;font-size:1.15em}
 .accmi.disabled{opacity:.35;pointer-events:none}
 /* mobile: tombol sedikit lebih ramping */
 @media(max-width:480px){
-  .tools.toolbar1{gap:6px}
+  .tools.toolbar1{gap:6px;overflow-x:auto;scrollbar-width:none}
+  .tools.toolbar1::-webkit-scrollbar{display:none}
+  .tools.toolbar-top{gap:6px}
   .btn-new{height:40px;padding:0 12px 0 10px;font-size:.78rem}
   .btn-new .plus{width:20px;height:20px;font-size:.85rem}
   .icobtn{width:40px;height:40px;font-size:1.05rem}
-  .tools.toolbar1 .crumbs{font-size:.74rem}
+  .tools.toolbar-top .crumbs{font-size:.74rem}
 }
 .tdiv{width:1px;height:26px;align-self:center;background:var(--line);opacity:.8;flex-shrink:0}
 .tools.toolbar2 input[type=search]{flex:1 1 140px;min-width:120px}

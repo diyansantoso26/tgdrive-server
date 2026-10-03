@@ -3,7 +3,18 @@
 {% block title %}Drive — TG Drive{% endblock %}
 {% block content %}
 <div class="toolbar">
+  <div class="tools toolbar-top">
+    <div class="crumbs pill" id="crumbs"></div>
+    <button class="icobtn" id="searchToggle" title="Cari"><span class="mi mi-search"></span></button>
+  </div>
   <div class="tools toolbar1">
+    <div class="explnav">
+      <button id="navBack" title="Kembali"><span class="mi mi-arrow-back"></span></button>
+      <button id="navFwd" title="Maju"><span class="mi mi-arrow-forward"></span></button>
+      <button id="navUp" title="Naik ke folder induk"><span class="mi mi-arrow-upward"></span></button>
+    </div>
+    <button class="icobtn" id="undoBtnT" title="Urungkan (Ctrl+Z)"><span class="mi mi-undo"></span></button>
+    <button class="icobtn" id="redoBtnT" title="Ulangi (Ctrl+Shift+Z)"><span class="mi mi-redo"></span></button>
     <div class="dpwrap">
       <button class="btn-new" id="newBtn"><span class="plus">+</span>New</button>
       <div class="dpdrop hidden" id="newDrop">
@@ -12,8 +23,6 @@
         <button id="newFolderBtn"><span class="ic"><span class="mi mi-folder"></span></span><span>Folder baru</span></button>
       </div>
     </div>
-    <div class="crumbs pill" id="crumbs"></div>
-    <button class="icobtn" id="searchToggle" title="Cari"><span class="mi mi-search"></span></button>
     <div class="dpwrap">
       <button class="icobtn" id="sortBtn" title="Urutkan"><span class="mi mi-sort"></span></button>
       <div class="dpdrop hidden" id="sortDrop">
@@ -41,9 +50,6 @@
         <a class="accmi" id="dupBtn"><span class="mi mi-content-copy"></span>Pembersih Duplikat</a>
         <div class="ovdiv"></div>
         <a class="accmi" id="ovRefresh"><span class="mi mi-sync"></span>Muat ulang</a>
-        <a class="accmi" id="ovUndo"><span class="mi mi-undo"></span>Urungkan</a>
-        <a class="accmi" id="ovRedo"><span class="mi mi-redo"></span>Ulangi</a>
-        <a class="accmi" id="ovFwd"><span class="mi mi-arrow-forward"></span>Maju</a>
       </div>
     </div>
     <input id="fileInput" type="file" multiple hidden>
