@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Daftar — TG Drive{% endblock %}
+{% block content %}
+<div class="login-card">
+  <h1>TG<span>Drive</span></h1>
+  <p class="muted">Buat akun baru</p>
+  {% if err %}<div class="err">{{ err }}</div>{% endif %}
+  {% if not closed %}
+  <form method="post">
+    <input type="text" name="username" placeholder="Username (3–40 karakter)" autofocus required autocomplete="username">
+    <input type="password" name="password" placeholder="Password (min. 8 karakter)" required autocomplete="new-password">
+    <input type="password" name="password2" placeholder="Ulangi password" required autocomplete="new-password">
+    {% if mode == 'invite' %}
+    <input type="text" name="invite_code" placeholder="Kode undangan" required>
+    {% else %}
+    <input type="text" name="invite_code" placeholder="Kode undangan (opsional)">
+    {% endif %}
+    <button class="btn primary" type="submit">Daftar</button>
+  </form>
+  {% endif %}
+  <p class="muted" style="margin-top:12px">Sudah punya akun? <a href="{{ url_for('login') }}">Masuk</a></p>
+</div>
+<style>.topbar,.warnbar{display:none}.wrap{max-width:420px;padding-top:12vh}</style>
+{% endblock %}
