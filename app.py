@@ -30,6 +30,14 @@ app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config['MAX_CONTENT_LENGTH'] = config.MAX_UPLOAD_BYTES + 2 * 1024 * 1024
 
+
+@app.after_request
+def _cors_upload(resp):
+    # CORS terbatas: hanya untuk endpoint chunked yang diautentikasi token transfer
+    if getattr(g, 'allow_cors', False):
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 VIDEO_EXTS = {'.mp4', '.webm', '.mov', '.mkv', '.avi'}
 AUDIO_EXTS = {'.mp3', '.ogg', '.wav', '.m4a'}
@@ -928,8 +936,10 @@ def _chunk_auth():
                                       'upload', single_use=False)
         if not t:
             return None, (jsonify({'error': 'Token transfer tidak valid/kedaluwarsa.'}), 401)
+        # CORS: auth via token di body (tanpa cookie) -> aman buka untuk origin mana pun
+        g.allow_cors = True
         s = db.get_upload_session(t['ref_id'])
-        if not s or s['user_id'] != t['user_id'] or s['status'] != 'active':
+        if not s or s['user_id'] != t['user_id'] or s['status'] not in ('active', 'done'):
             return None, (jsonify({'error': 'Sesi upload tidak valid.'}), 404)
         if sid and sid != s['id']:
             return None, (jsonify({'error': 'Token tidak cocok dengan sesi upload.'}), 403)
@@ -939,7 +949,8 @@ def _chunk_auth():
     s = db.get_upload_session(sid, uid()) if sid else None
     if not s:
         return None, (jsonify({'error': 'Sesi upload tidak ditemukan.'}), 404)
-    if s['status'] != 'active':
+    # 'done' diizinkan lewat (untuk complete yang idempotent); tiap endpoint memutuskan
+    if s['status'] not in ('active', 'done'):
         return None, (jsonify({'error': 'Sesi upload sudah %s.' % s['status']}), 410)
     return uid(), s
 
@@ -980,11 +991,38 @@ def api_upload_init():
         return jsonify({'error': 'Kuota penyimpanan habis (%s).' % fmt_size(quota_bytes)}), 413
 
     pro = is_pro()
-    # Upload chunked per potong 5-10MB -> selalu di bawah batas Cloudflare,
-    # jadi SEMUA upload (termasuk >100MB) bisa via origin saat ini (domain).
-    # Tidak perlu routing ke direct untuk upload.
-    if file_size >= CF_LIMIT_BYTES and not pro:
+    # 2 mode upload:
+    #  - <100MB: single POST via domain (mode 1, kode lama)
+    #  - >=100MB: chunked via direct + token (mode 2, khusus PRO) — hindari timeout Cloudflare
+    need_direct = file_size >= CF_LIMIT_BYTES
+    if need_direct and not pro:
         return jsonify({'error': 'File di atas 100 MB khusus pengguna PRO.'}), 403
+    chunked_on = (db.get_setting('chunked_upload', '1') or '1') == '1'
+    if need_direct and not chunked_on:
+        return jsonify({'error': 'Mode upload resume dimatikan admin.', 'chunked_off': True}), 403
+    direct_base = _direct_base()
+    if need_direct and not direct_base:
+        return jsonify({'error': 'Jalur langsung belum diatur admin.'}), 500
+
+    # idempotency: retry init dengan client_key yang sama -> kembalikan sesi aktif
+    client_key = (data.get('client_key') or '').strip()[:64] or None
+    if client_key:
+        old = db.get_upload_session_by_client_key(client_key, uid())
+        if old:
+            try:
+                rec = json.loads(old['received'] or '[]')
+            except Exception:
+                rec = []
+            out = {'ok': True, 'upload_id': old['id'], 'chunk_size': old['chunk_size'],
+                   'total_chunks': old['total_chunks'], 'resumed': True,
+                   'received': len(rec), 'target': 'direct' if need_direct else 'domain'}
+            if need_direct:
+                raw = secrets.token_urlsafe(32)
+                db.create_transfer_token(hashlib.sha256(raw.encode()).hexdigest(), uid(),
+                                         'upload', ref_id=old['id'], ttl_seconds=24 * 3600)
+                out['direct_url'] = direct_base
+                out['transfer_token'] = raw
+            return jsonify(out)
 
     chunk_size = (10 * 1024 * 1024) if file_size >= 500 * 1024 * 1024 else (5 * 1024 * 1024)
     total_chunks = (file_size + chunk_size - 1) // chunk_size
@@ -997,10 +1035,18 @@ def api_upload_init():
     except OSError:
         return jsonify({'error': 'Gagal menyiapkan ruang sementara.'}), 500
     db.create_upload_session(sid, uid(), name, file_size, chunk_size, total_chunks,
-                             tmp_path, folder_id, overwrite_id)
+                             tmp_path, folder_id, overwrite_id, client_key=client_key)
 
-    return jsonify({'ok': True, 'upload_id': sid, 'chunk_size': chunk_size,
-                    'total_chunks': total_chunks, 'target': 'domain'})
+    out = {'ok': True, 'upload_id': sid, 'chunk_size': chunk_size,
+           'total_chunks': total_chunks, 'target': 'direct' if need_direct else 'domain'}
+    if need_direct:
+        # token lintas origin: terikat upload_id ini, 24 jam, multi-pakai dalam TTL
+        raw = secrets.token_urlsafe(32)
+        db.create_transfer_token(hashlib.sha256(raw.encode()).hexdigest(), uid(),
+                                 'upload', ref_id=sid, ttl_seconds=24 * 3600)
+        out['direct_url'] = direct_base
+        out['transfer_token'] = raw
+    return jsonify(out)
 
 
 @app.route('/api/upload/sessions', methods=['GET'])
@@ -1071,11 +1117,15 @@ def api_upload_status():
 
 @app.route('/api/upload/complete', methods=['POST'])
 def api_upload_complete():
-    """Semua chunk lengkap -> rakit & proses seperti upload biasa."""
+    """Semua chunk lengkap -> rakit & proses seperti upload biasa. Idempotent:
+    retry dengan upload_id yang sama mengembalikan hasil tersimpan."""
     user_id, res = _chunk_auth()
     if user_id is None:
         return res
     s = res
+    # sudah pernah complete -> kembalikan hasil tersimpan (anti duplikat)
+    if s['status'] == 'done' and s.get('result_file_id'):
+        return jsonify({'ok': True, 'id': s['result_file_id'], 'duplicate': True})
     try:
         rec = set(json.loads(s['received'] or '[]'))
     except Exception:
@@ -1103,12 +1153,12 @@ def api_upload_complete():
         fid, overwritten = _process_upload_file(s['tmp_path'], s['file_name'], s['file_size'],
                                                 s['folder_id'], s['overwrite_id'],
                                                 creds, user_id, t0, old_rec)
-        db.set_upload_session_status(s['id'], 'done')
+        # tandai done + simpan hasil (sesi dihapus oleh cleanup 24 jam; retry aman)
+        db.set_upload_session_status(s['id'], 'done', result_file_id=fid)
         try:
             os.remove(s['tmp_path'])
         except OSError:
             pass
-        db.delete_upload_session(s['id'])
         return jsonify({'ok': True, 'id': fid, 'overwritten': overwritten})
     except tg.TgError as e:
         return jsonify({'error': 'Telegram: %s' % e}), 502
@@ -1655,6 +1705,7 @@ def api_upload_limits():
         'resume_threshold_bytes': RESUME_THRESHOLD_BYTES,
         'is_pro': is_pro(),
         'direct_url': _direct_base(),
+        'chunked': (db.get_setting('chunked_upload', '1') or '1') == '1',
     })
 
 
@@ -1806,6 +1857,7 @@ def api_admin_invites():
                     'handoff_token_ttl': int(db.get_setting('handoff_token_ttl', 90) or 90),
                     'wa_number': db.get_setting('wa_number', '') or '',
                     'telegram_username': db.get_setting('telegram_username', '') or '',
+                    'chunked_upload': (db.get_setting('chunked_upload', '1') or '1') == '1',
                     'prices': {k: db.get_setting(k, '') or '' for k in
                                ('license_price_monthly', 'license_price_yearly', 'license_price_lifetime')}})
 
@@ -1917,6 +1969,8 @@ def api_admin_settings():
     if 'telegram_username' in data:
         tu = re.sub(r'[^A-Za-z0-9_]', '', data['telegram_username'] or '')[:32]
         db.set_setting('telegram_username', tu)
+    if 'chunked_upload' in data:
+        db.set_setting('chunked_upload', '1' if data['chunked_upload'] in (True, 1, '1') else '0')
     return jsonify({'ok': True})
 
 
