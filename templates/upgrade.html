@@ -45,10 +45,16 @@
     <img src="{{ qris_url }}" alt="QRIS pembayaran" style="max-width:260px;width:100%;border-radius:10px;border:1px solid var(--line)">
     <p class="muted" style="font-size:.82rem;margin-top:6px">QRIS a.n. GTG OFFICIAL — masukkan nominal manual sesuai harga paket</p>
   </div>
-  {% if wa_number %}
-  <div style="text-align:center;margin-top:10px">
+  {% if wa_number or telegram_username %}
+  <div style="text-align:center;margin-top:10px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    {% if wa_number %}
     <a class="btn primary" target="_blank" rel="noopener" id="waBtn" href="#">💬 Konfirmasi via WhatsApp</a>
+    {% endif %}
+    {% if telegram_username %}
+    <a class="btn" target="_blank" rel="noopener" id="tgBtn" href="https://t.me/{{ telegram_username }}">✈️ Konfirmasi via Telegram</a>
+    {% endif %}
   </div>
+  <p class="muted" id="cpMsg" style="font-size:.8rem;margin-top:8px;display:none">Pesan konfirmasi disalin — tinggal tempel (paste) di chat Telegram.</p>
   {% else %}
   <p class="muted" style="font-size:.88rem">Setelah bayar, hubungi admin untuk konfirmasi.</p>
   {% endif %}
@@ -64,9 +70,23 @@
 </div>
 
 <script>
-{% if wa_number %}
-document.getElementById('waBtn').href='https://wa.me/{{ wa_number }}?text='+encodeURIComponent('Halo admin, saya sudah bayar lisensi TG Drive.\nUsername: {{ session.get("username","") }}\nPaket: \nNominal: Rp ');
-{% endif %}
+(function(){
+  const msg='Halo admin, saya sudah bayar lisensi TG Drive.\nUsername: {{ session.get("username","") }}\nPaket: \nNominal: Rp ';
+  {% if wa_number %}
+  document.getElementById('waBtn').href='https://wa.me/{{ wa_number }}?text='+encodeURIComponent(msg);
+  {% endif %}
+  {% if telegram_username %}
+  const tg=document.getElementById('tgBtn');
+  if(tg)tg.addEventListener('click',()=>{
+    // Telegram tidak mendukung prefill pesan via link — salin dulu biar user tinggal paste
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(msg).then(()=>{document.getElementById('cpMsg').style.display='';}).catch(()=>{});
+      }
+    }catch(e){}
+  });
+  {% endif %}
+})();
 async function redeem(){
   const code=document.getElementById('licCode').value.trim();
   const msg=document.getElementById('licMsg');
