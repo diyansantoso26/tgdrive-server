@@ -9,7 +9,7 @@ SCP="scp -F /home/hatch/.ssh/config_vps"
 STAMP=$(date +%Y%m%d-%H%M)
 
 echo "== 1/6 Backup database =="
-$SSH "sudo cp /home/tgdrive/app/data/drive.db /home/tgdrive/app/data/drive.db.bak-deploy-$STAMP && sudo chown tgdrive:tgdrive /home/tgdrive/app/data/drive.db.bak-deploy-$STAMP && echo backup-ok"
+$SSH "sudo cp /home/tgdrive/app/data/drive.db /home/tgdrive/app/data/drive.db.bak-deploy-$STAMP && sudo chown tgdrive:tgdrive /home/tgdrive/app/data/drive.db.bak-deploy-$STAMP && sudo bash -c 'cd /home/tgdrive/app/data && ls -t drive.db.bak-deploy-* 2>/dev/null | tail -n +6 | xargs -r rm -f' && echo backup-ok"
 
 echo "== 2/6 Pastikan TOKEN_ENC_KEY ada (sekali saja, anti duplikat) =="
 $SSH "sudo grep -q '^TOKEN_ENC_KEY=' /home/tgdrive/app/.env && echo key-ada || { KEY=\$(/home/tgdrive/app/venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'); printf '\nTOKEN_ENC_KEY=%s\n' \"\$KEY\" | sudo tee -a /home/tgdrive/app/.env > /dev/null; sudo chmod 600 /home/tgdrive/app/.env; echo key-dibuat; }"
