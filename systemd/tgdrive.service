@@ -1,0 +1,20 @@
+[Unit]
+Description=TG Drive - penyimpanan cloud pribadi berbasis Telegram
+After=network.target
+
+[Service]
+Type=simple
+User=tgdrive
+Group=tgdrive
+WorkingDirectory=/home/tgdrive/app
+EnvironmentFile=/home/tgdrive/app/.env
+ExecStart=/home/tgdrive/app/venv/bin/gunicorn -w 3 --threads 4 --timeout 1800 -b 127.0.0.1:8502 app:app
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+CPUQuota=200%
+MemoryMax=2048M
+
+[Install]
+WantedBy=multi-user.target
