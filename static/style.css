@@ -359,7 +359,7 @@ label.btn{cursor:pointer}
 /* ===== foto full viewport (2026-10-03): halaman dikunci, hanya area foto yang scroll ===== */
 body.page-photos{overflow:hidden;scrollbar-width:none}
 body.page-photos::-webkit-scrollbar{display:none}
-body.page-photos main.wrap{display:flex;flex-direction:column;height:calc(100vh - 58px);height:calc(100dvh - 58px);padding-bottom:10px}
+body.page-photos main.wrap{display:flex;flex-direction:column;height:calc(100vh - 58px);height:calc(100dvh - 58px);padding-bottom:10px;max-width:none}
 body.page-photos #tlWrap{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;overscroll-behavior:contain;position:static}
 body.page-photos #tlWrap::-webkit-scrollbar{display:none}
 body.page-photos .tl-head{top:0}
