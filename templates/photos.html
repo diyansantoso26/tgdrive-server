@@ -5,11 +5,11 @@
 <div class="fbar-wrap" id="fbarWrap">
   <div class="fotobar">
     <div class="lchips" id="lchips"></div>
-    <button class="iconbtn" id="psortBtn" title="Urutkan">⇅</button>
-    <button class="iconbtn" id="pviewBtn" title="Tampilan">▦</button>
+    <button class="iconbtn" id="psortBtn" title="Urutkan"><span class="mi mi-swap-vert"></span></button>
+    <button class="iconbtn" id="pviewBtn" title="Tampilan"><span class="mi mi-grid-view"></span></button>
   </div>
 </div>
-<div id="selBar" class="selbar hidden"><span id="pselCount">0 dipilih</span><span class="spacer"></span><button id="pselAllBtn">Pilih semua</button><button id="pselCancelBtn">✕ Batal</button></div>
+<div id="selBar" class="selbar hidden"><span id="pselCount">0 dipilih</span><span class="spacer"></span><button id="pselAllBtn">Pilih semua</button><button id="pselCancelBtn"><span class="mi mi-close"></span> Batal</button></div>
 <div id="lockNote" class="locknote hidden"></div>
 <div class="tl-outer" id="tlOuter">
   <div class="tl-wrap" id="tlWrap">
@@ -19,10 +19,10 @@
 </div>
 <div id="emptyState" class="empty hidden">Belum ada foto atau video.<br>Upload lewat halaman Drive.</div>
 <div id="pselActionBar" class="actionbar">
-  <button class="btn" id="pLabBtn">🏷 Label</button>
-  <button class="btn" id="pFavBtn">★ Favorit</button>
-  <button class="btn" id="pDlBtn">⬇ Unduh</button>
-  <button class="btn danger" id="pDelBtn">🗑 Hapus</button>
+  <button class="btn" id="pLabBtn"><span class="mi mi-label"></span> Label</button>
+  <button class="btn" id="pFavBtn"><span class="mi mi-star"></span> Favorit</button>
+  <button class="btn" id="pDlBtn"><span class="mi mi-download"></span> Unduh</button>
+  <button class="btn danger" id="pDelBtn"><span class="mi mi-delete"></span> Hapus</button>
 </div>
 {% endblock %}
 {% block scripts %}
