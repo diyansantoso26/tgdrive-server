@@ -246,10 +246,11 @@ def _is_direct_host():
 
 @app.context_processor
 def inject_asset_v():
-    # Cache-buster otomatis untuk file statis: pakai mtime app.js,
-    # jadi setiap deploy yang mengubah JS/CSS langsung terpakai klien.
+    # Cache-buster otomatis untuk file statis: pakai mtime terbaru app.js/style.css,
+    # jadi setiap deploy yang mengubah JS/CSS langsung terpakai klien (termasuk WebView).
     try:
-        v = int(os.path.getmtime(os.path.join(app.root_path, 'static', 'app.js')))
+        v = max(int(os.path.getmtime(os.path.join(app.root_path, 'static', f)))
+                for f in ('app.js', 'style.css'))
     except Exception:
         v = 0
     return {'asset_v': v}
