@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}TG Drive{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
+</head>
+<body>
+{% if not hide_nav %}
+<header class="topbar">
+  <a class="brand" href="{{ url_for('drive') }}">TG<span>Drive</span></a>
+  <nav>
+    <a href="{{ url_for('drive') }}" class="{% if active=='drive' %}on{% endif %}">Drive</a>
+    <a href="{{ url_for('photos') }}" class="{% if active=='photos' %}on{% endif %}">Foto</a>
+    <a href="{{ url_for('activity') }}" class="{% if active=='activity' %}on{% endif %}">Aktivitas</a>
+    <a href="{{ url_for('settings') }}" class="{% if active=='settings' %}on{% endif %}">Pengaturan</a>
+    {% if nav_is_admin %}<a href="{{ url_for('admin_page') }}" class="{% if active=='admin' %}on{% endif %}">Admin</a>{% endif %}
+  </nav>
+  <span id="storageInfo" class="storage"></span>
+  <span id="livepill" class="livepill hidden" title="Upload berjalan — klik untuk lihat"></span>
+  {% if nav_username %}<span class="storage" title="Login sebagai">{{ nav_username }}</span>{% endif %}
+  <a class="logout" href="{{ url_for('logout') }}">Keluar</a>
+</header>
+{% if not configured %}
+<div class="warnbar">Akun Telegram belum dikonfigurasi — tambahkan di halaman <a href="{{ url_for('settings') }}" style="color:#ffd98a">Pengaturan</a>. Web tetap bisa dibuka, tapi upload belum jalan.</div>
+{% endif %}
+{% endif %}
+<main class="wrap">
+{% block content %}{% endblock %}
+</main>
+<div id="lightbox" class="lightbox hidden">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <button class="lb-prev" onclick="lbNav(-1)">‹</button>
+  <button class="lb-next" onclick="lbNav(1)">›</button>
+  <div id="lbBody" class="lb-body"></div>
+  <div id="lbCap" class="lb-cap"></div>
+</div>
+<script>var ON_DIRECT={{ 'true' if is_direct else 'false' }};</script>
+<script src="{{ url_for('static', filename='app.js') }}?v={{ asset_v }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
