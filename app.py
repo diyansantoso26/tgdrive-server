@@ -22,6 +22,7 @@ from PIL.ExifTags import TAGS
 
 import config
 import db
+import fcntl
 
 # janitor sesi upload: timestamp terakhir cleanup_upload_sessions() per worker
 _last_upload_cleanup = 0
@@ -937,6 +938,39 @@ def _make_local_thumb(tmp_path, kind, fid):
     return None
 
 
+_TG_PACE_SECONDS = 2.0      # jeda antar upload ke Telegram (hindari flood limit)
+_TG_LOCK_TIMEOUT = 600      # maks antre 10 menit, selebihnya gagal cepat
+
+def _tg_send_serialized(user_id, fn):
+    """Jalankan fn() (kirim ke Telegram) bergantian per user + jeda.
+    Mencegah flood limit Telegram saat banyak upload paralel (3 worker gunicorn).
+    Lock file antar-proses (fcntl) sehingga berlaku lintas worker/thread."""
+    path = os.path.join(config.TMP_DIR, 'tgup_%s.lock' % user_id)
+    f = open(path, 'w')
+    try:
+        t0 = time.time()
+        while True:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (OSError, IOError):
+                if time.time() - t0 > _TG_LOCK_TIMEOUT:
+                    raise tg.TgError('Antrean upload Telegram timeout')
+                time.sleep(0.2)
+        try:
+            return fn()
+        finally:
+            try:
+                time.sleep(_TG_PACE_SECONDS)
+            finally:
+                try:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                except (OSError, IOError):
+                    pass
+    finally:
+        f.close()
+
+
 def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, creds,
                           user_id, t0, old_rec=None):
     """Kirim file lokal ke Telegram + catat DB. Dipakai upload biasa & chunked."""
@@ -945,12 +979,14 @@ def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, cre
     taken = photo_taken_at(tmp_path, orig_name, kind)
     caption = orig_name[:900]
 
-    if kind == 'photo':
-        meta = tg.send_photo(tmp_path, caption, creds=creds)
-    elif kind == 'video':
-        meta = tg.send_video(tmp_path, caption, creds=creds)
-    else:
-        meta = tg.send_document(tmp_path, orig_name, caption, creds=creds)
+    def _do_send():
+        if kind == 'photo':
+            return tg.send_photo(tmp_path, caption, creds=creds)
+        elif kind == 'video':
+            return tg.send_video(tmp_path, caption, creds=creds)
+        return tg.send_document(tmp_path, orig_name, caption, creds=creds)
+    # antre per user + jeda: cegah flood limit Telegram saat upload paralel
+    meta = _tg_send_serialized(user_id, _do_send)
     if not meta.get('file_id'):
         raise tg.TgError('Telegram tidak mengembalikan file_id')
 
@@ -1001,6 +1037,19 @@ def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, cre
     return fid, bool(old_rec)
 
 
+def _tg_error_response(e):
+    """Ubah TgError jadi respons HTTP: 429 + retry_after bila kena rate limit Telegram
+    (agar client menunggu otomatis, bukan gagal)."""
+    import re as _re
+    msg = str(e)
+    m = _re.search(r'retry after (\d+)', msg, _re.I)
+    if m:
+        n = max(1, min(int(m.group(1)), 300))
+        return jsonify({'error': 'Telegram sibuk (rate limit), mengulang otomatis dalam %d detik.' % n,
+                        'retry_after': n}), 429
+    return jsonify({'error': 'Telegram: %s' % msg}), 502
+
+
 @app.route('/api/upload', methods=['POST'])
 @login_required
 def api_upload():
@@ -1040,7 +1089,7 @@ def api_upload():
                                                 overwrite_id, creds, uid(), t0, old_rec)
         return jsonify({'ok': True, 'id': fid, 'overwritten': overwritten})
     except tg.TgError as e:
-        return jsonify({'error': 'Telegram: %s' % e}), 502
+        return _tg_error_response(e)
     except Exception as e:
         return jsonify({'error': 'Gagal upload: %s' % e}), 500
     finally:
@@ -1302,7 +1351,7 @@ def api_upload_complete():
             pass
         return jsonify({'ok': True, 'id': fid, 'overwritten': overwritten})
     except tg.TgError as e:
-        return jsonify({'error': 'Telegram: %s' % e}), 502
+        return _tg_error_response(e)
     except Exception as e:
         return jsonify({'error': 'Gagal merakit: %s' % e}), 500
 
