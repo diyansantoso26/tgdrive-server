@@ -94,7 +94,7 @@ function askPin(title,msg){return new Promise(res=>{
 function notify(msg,type){
   document.querySelectorAll('.ntoast').forEach(t=>t.remove());
   const d=document.createElement('div');d.className='ntoast '+(type||'info');
-  const ic=type==='ok'?'✓':type==='err'?'✕':'ℹ';
+  const ic=type==='ok'?'<span class="mi mi-check"></span>':type==='err'?'<span class="mi mi-close"></span>':'<span class="mi mi-info"></span>';
   d.innerHTML='<span class="nico">'+ic+'</span><span></span>';
   d.lastChild.textContent=msg;
   document.body.appendChild(d);
@@ -127,9 +127,9 @@ function mdRender(src){
 /* dialog pilih folder tujuan (untuk pindah massal) — promise folderId|null */
 function pickFolder(folders,currentId){
   return new Promise(res=>{
-    const row=(id,name,indent)=>'<div class="frow'+(String(id)===String(currentId)?' on':'')+'" data-f="'+id+'" style="padding-left:'+(14+indent*18)+'px">📁 '+esc(name)+'</div>';
+    const row=(id,name,indent)=>'<div class="frow'+(String(id)===String(currentId)?' on':'')+'" data-f="'+id+'" style="padding-left:'+(14+indent*18)+'px"><span class="mi mi-folder"></span> '+esc(name)+'</div>';
     let sel=null;
-    const m=modal('<h3>📂 Pindah ke…</h3><div class="fpick">'
+    const m=modal('<h3><span class="mi mi-folder-open"></span> Pindah ke…</h3><div class="fpick">'
       +row('root','Drive Saya',0)
       +folders.map(f=>row(f.id,f.name,0)).join('')
       +'</div><div class="row"><button class="btn" id="pfNo">Batal</button><button class="btn primary" id="pfYes">Pindahkan</button></div>');
@@ -148,11 +148,11 @@ function openEditor(o){
   const draftKey='tgd_draft_'+(isNew?'new_'+ext+'_'+(o.folder||'root'):'f'+o.fileId);
   const wrap=document.createElement('div');wrap.className='edwrap';
   wrap.innerHTML=
-    '<div class="edtop"><button class="btn ghost" id="edBack" title="Kembali">←</button>'
+    '<div class="edtop"><button class="btn ghost" id="edBack" title="Kembali"><span class="mi mi-arrow-back"></span></button>'
     +'<input class="edname" id="edName" maxlength="200" value="">'
     +'<span class="eddraft" id="edDraft"></span>'
     +'<button class="btn primary" id="edSave">Simpan</button></div>'
-    +'<div class="edtabs"><div class="edseg" id="edTabs"><button data-v="edit" class="on">✏️ Tulis</button><button data-v="prev">👁 Pratinjau</button></div>'
+    +'<div class="edtabs"><div class="edseg" id="edTabs"><button data-v="edit" class="on"><span class="mi mi-edit"></span> Tulis</button><button data-v="prev"><span class="mi mi-visibility"></span> Pratinjau</button></div>'
     +'<span class="edcount" id="edCount"></span></div>'
     +'<textarea class="edarea" id="edArea" placeholder="Tulis di sini…"></textarea>'
     +'<div class="edprev" id="edPrev" style="display:none"></div>';
@@ -358,11 +358,11 @@ function initDrive(){
     if(bB)bB.disabled=S.trash?false:navIdx===0;
     if(bF)bF.disabled=navIdx>=navHist.length-1;
     if(bU)bU.disabled=S.trash?false:S.folder==='root';
-    let h='<button class="crumb'+(S.folder==='root'&&!S.trash?' on':'')+'" data-f="root">🏠 Drive Saya</button>';
+    let h='<button class="crumb'+(S.folder==='root'&&!S.trash?' on':'')+'" data-f="root"><span class="mi mi-home"></span> Drive Saya</button>';
     if(!S.trash&&S.folder!=='root'){
-      h+=folderChain(S.folder).map(f=>'<span class="csep">›</span><button class="crumb'+(String(S.folder)===String(f.id)?' on':'')+'" data-f="'+f.id+'">📁 '+esc(f.name)+'</button>').join('');
+      h+=folderChain(S.folder).map(f=>'<span class="csep">›</span><button class="crumb'+(String(S.folder)===String(f.id)?' on':'')+'" data-f="'+f.id+'"><span class="mi mi-folder"></span> '+esc(f.name)+'</button>').join('');
     }
-    if(S.trash)h+='<span class="csep">›</span><button class="crumb on" data-f="__trash">🗑 Tong Sampah</button>';
+    if(S.trash)h+='<span class="csep">›</span><button class="crumb on" data-f="__trash"><span class="mi mi-delete"></span> Tong Sampah</button>';
     crumbs.innerHTML=h;
     crumbs.querySelectorAll('button').forEach(b=>b.onclick=()=>{const v=b.dataset.f;
       if(v==='__trash'){S.trash=true;exitSelMode();renderCrumbs();load()}
@@ -392,14 +392,14 @@ function initDrive(){
     let html='';
     if(!S.trash&&!S.q){
       const subs=S.folders.filter(f=>S.folder==='root'?!f.parent_id:String(f.parent_id)===String(S.folder));
-      html+=subs.map(f=>'<div class="fitem folderitem" data-fid="'+f.id+'"><div class="chk">✓</div><div class="thumb">📁'+(f.is_locked?'<span class="lk">🔒</span>':'')+'</div><div class="meta"><div class="nm">'+esc(f.name)+'</div><div class="sz">Folder</div></div><div class="acts"><button class="kebab" title="Menu">⋮</button></div></div>').join('');
+      html+=subs.map(f=>'<div class="fitem folderitem" data-fid="'+f.id+'"><div class="chk"><span class="mi mi-check"></span></div><div class="thumb"><span class="mi mi-folder"></span>'+(f.is_locked?'<span class="lk"><span class="mi mi-lock"></span></span>':'')+'</div><div class="meta"><div class="nm">'+esc(f.name)+'</div><div class="sz">Folder</div></div><div class="acts"><button class="kebab" title="Menu"><span class="mi mi-more-vert"></span></button></div></div>').join('');
     }
     html+=files.map((f,i)=>{
       const thumb=f.kind==='photo'||f.kind==='video'
-        ?'<img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.parentNode.textContent='+(f.kind==='video'?'🎬':'🖼')+'">'
-        :'<div>'+(f.kind==='audio'?'🎵':/\.md$/i.test(f.name)?'📝':'📄')+'</div>';
-      return '<div class="fitem" data-i="'+i+'"><div class="chk">✓</div><div class="thumb">'+thumb+'</div><div class="meta"><div class="nm" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' • '+fmtDate(f.uploaded_at)+(S.trash?'<br><span class="trashcount">'+trashCountdown(f.trashed_at)+'</span>':'')+'</div></div>'+
-        '<div class="acts"><button class="kebab" title="Menu">⋮</button></div></div>';
+        ?'<img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.parentNode.innerHTML='+(f.kind==='video'?'<span class="mi mi-movie"></span>':'<span class="mi mi-image"></span>')+'">'
+        :'<div>'+(f.kind==='audio'?'<span class="mi mi-music-note"></span>':/\.md$/i.test(f.name)?'<span class="mi mi-edit-note"></span>':'<span class="mi mi-description"></span>')+'</div>';
+      return '<div class="fitem" data-i="'+i+'"><div class="chk"><span class="mi mi-check"></span></div><div class="thumb">'+thumb+'</div><div class="meta"><div class="nm" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' • '+fmtDate(f.uploaded_at)+(S.trash?'<br><span class="trashcount">'+trashCountdown(f.trashed_at)+'</span>':'')+'</div></div>'+
+        '<div class="acts"><button class="kebab" title="Menu"><span class="mi mi-more-vert"></span></button></div></div>';
     }).join('');
     grid.innerHTML=html;empty.classList.toggle('hidden',html!=='');
     const items=files;selItems=files;
@@ -445,17 +445,17 @@ function initDrive(){
       const{fid,el}=kb._folder;
       const fl=S.folders.find(x=>String(x.id)===String(fid));
       defs=[
-        ['ⓘ Properties',()=>folderAct('props',fid,el)],
-        ['✏️ Ganti nama',()=>folderAct('rename',fid,el)],
-        [fl&&fl.is_locked?'🔓 Buka kunci folder':'🔒 Kunci folder',()=>folderAct(fl&&fl.is_locked?'unlock':'lock',fid,el)],
-        ['🗑 Hapus folder',()=>folderAct('del',fid,el)],
+        ['<span class="mi mi-info"></span> Properties',()=>folderAct('props',fid,el)],
+        ['<span class="mi mi-edit"></span> Ganti nama',()=>folderAct('rename',fid,el)],
+        [fl&&fl.is_locked?'<span class="mi mi-lock-open"></span> Buka kunci folder':'<span class="mi mi-lock"></span> Kunci folder',()=>folderAct(fl&&fl.is_locked?'unlock':'lock',fid,el)],
+        ['<span class="mi mi-delete"></span> Hapus folder',()=>folderAct('del',fid,el)],
       ];
     }else if(kb._file){
       const it=kb._file;
-      defs=[['⬇ Unduh',()=>act('dl',it)],['ⓘ Properties',()=>act('props',it)]];
-      if(/\.(txt|md)$/i.test(it.name))defs.push(['✏️ Edit',()=>act('edit',it)]);
-      if(!S.trash)defs.push(['✏️ Ganti nama',()=>act('rename',it)],['🔗 Bagikan',()=>act('share',it)],[(it.favorite?'★ Hapus dari favorit':'☆ Favorit'),()=>act('fav',it)],['🗑 Hapus',()=>act('trash',it)]);
-      else defs.push(['↩ Kembalikan',()=>act('restore',it)],['✖ Hapus permanen',()=>act('del',it)]);
+      defs=[['<span class="mi mi-download"></span> Unduh',()=>act('dl',it)],['<span class="mi mi-info"></span> Properties',()=>act('props',it)]];
+      if(/\.(txt|md)$/i.test(it.name))defs.push(['<span class="mi mi-edit"></span> Edit',()=>act('edit',it)]);
+      if(!S.trash)defs.push(['<span class="mi mi-edit"></span> Ganti nama',()=>act('rename',it)],['<span class="mi mi-share"></span> Bagikan',()=>act('share',it)],[(it.favorite?'★ Hapus dari favorit':'☆ Favorit'),()=>act('fav',it)],['🗑 Hapus',()=>act('trash',it)]);
+      else defs.push(['<span class="mi mi-undo"></span> Kembalikan',()=>act('restore',it)],['<span class="mi mi-close"></span> Hapus permanen',()=>act('del',it)]);
     }
     m.innerHTML=defs.map((d,i)=>'<button data-mi="'+i+'">'+d[0]+'</button>').join('');
     m.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();hideCtxMenu();defs[+b.dataset.mi][1]()});
@@ -785,7 +785,7 @@ function initDrive(){
             if(ON_DIRECT)await doUploadP(j.f,j.overwriteId,j.folderId,1);
             else{const r0=qitem(j.f.name,'');r0.status.innerHTML='Mode resume dimatikan admin. Pindah manual untuk upload file ini. ';
               const mb=document.createElement('button');mb.className='btn ghost';
-              mb.style.cssText='padding:2px 10px;font-size:.78rem';mb.textContent='⚡ Mode Besar';
+              mb.style.cssText='padding:2px 10px;font-size:.78rem';mb.innerHTML='<span class="mi mi-bolt"></span> Mode Besar';
               mb.onclick=()=>handoffGo(LIM.directUrl);r0.status.appendChild(mb)}
             continue;
           }
@@ -913,7 +913,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   function modeBesarFallbackBtn(row,retryFn){
     const mb=document.createElement('button');mb.className='btn ghost';
     mb.style.cssText='padding:2px 10px;font-size:.78rem;margin-left:6px';
-    mb.textContent='⚡ Coba via Mode Besar';
+    mb.innerHTML='<span class="mi mi-bolt"></span> Coba via Mode Besar';
     mb.onclick=()=>{handoffGo(LIM.directUrl)};
     row.status.appendChild(mb);
     return mb;
@@ -996,7 +996,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   /* toolbar */
   document.getElementById('sort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;load()};
   let qt;document.getElementById('q').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();load()},350)};
-  document.getElementById('viewToggle').onclick=e=>{S.view=S.view==='grid'?'list':'grid';e.target.textContent=S.view==='grid'?'▦':'☰';load()};
+  document.getElementById('viewToggle').onclick=e=>{S.view=S.view==='grid'?'list':'grid';e.currentTarget.innerHTML='<span class="mi '+(S.view==='grid'?'mi-grid-view':'mi-view-list')+'"></span>';load()};
   /* navbar explorer */
   document.getElementById('navBack').onclick=navBack;
   document.getElementById('navFwd').onclick=navFwd;
@@ -1160,7 +1160,7 @@ function initSettings(){
   document.querySelectorAll('.eyebtn').forEach(b=>b.onclick=()=>{
     const i=document.getElementById(b.dataset.for);if(!i)return;
     const show=i.type==='password';i.type=show?'text':'password';
-    b.textContent=show?'🙈':'👁';
+    b.innerHTML=show?'<span class="mi mi-visibility-off"></span>':'<span class="mi mi-visibility"></span>';
   });
   async function loadLock(){
     try{
@@ -1177,7 +1177,7 @@ function initSettings(){
       const fs=(await api('/api/folders')).folders||[];
       const locked=fs.filter(f=>f.is_locked), unlocked=fs.filter(f=>!f.is_locked);
       document.getElementById('lockCount').textContent=fs.length?(locked.length+' dari '+fs.length+' terkunci'):'';
-      const row=f=>'<div class="lockrow"><span class="lname" title="'+esc(f.name)+'">📁 '+(f.is_locked?'🔒 ':'')+esc(f.name)+'</span><button class="btn ghost" data-id="'+f.id+'" data-lk="'+(f.is_locked?1:0)+'">'+(f.is_locked?'Buka kunci':'🔒 Kunci')+'</button></div>';
+      const row=f=>'<div class="lockrow"><span class="lname" title="'+esc(f.name)+'"><span class="mi mi-folder"></span> '+(f.is_locked?'<span class="mi mi-lock"></span> ':'')+esc(f.name)+'</span><button class="btn ghost" data-id="'+f.id+'" data-lk="'+(f.is_locked?1:0)+'">'+(f.is_locked?'Buka kunci':'🔒 Kunci')+'</button></div>';
       const box=document.getElementById('lockFolders');
       box.innerHTML=(locked.length?'<div class="locknote">Terkunci</div>'+locked.map(row).join(''):'')+
         (unlocked.length?'<div class="locknote" style="margin-top:8px">Tidak terkunci</div>'+unlocked.map(row).join(''):'')||
@@ -1218,7 +1218,7 @@ function initSettings(){
 }
 
 /* ---------- ACTIVITY ---------- */
-const ACT_LABEL={upload:['⬆️','Mengupload'],overwrite:['🔁','Menimpa'],rename_file:['✏️','Mengganti nama file'],trash:['🗑️','Memindah ke tong sampah'],restore:['↩️','Mengembalikan'],delete:['✖️','Menghapus permanen'],create_folder:['📁','Membuat folder'],rename_folder:['📁','Mengganti nama folder'],delete_folder:['📁','Menghapus folder'],share:['🔗','Membuat link berbagi'],favorite:['★','Menandai favorit'],unfavorite:['☆','Menghapus dari favorit'],switch_account:['👤','Beralih akun'],login:['🔑','Masuk']};
+const ACT_LABEL={upload:['<span class="mi mi-upload"></span>','Mengupload'],overwrite:['<span class="mi mi-sync"></span>','Menimpa'],rename_file:['<span class="mi mi-edit"></span>','Mengganti nama file'],trash:['<span class="mi mi-delete"></span>','Memindah ke tong sampah'],restore:['<span class="mi mi-undo"></span>','Mengembalikan'],delete:['<span class="mi mi-close"></span>','Menghapus permanen'],create_folder:['<span class="mi mi-folder"></span>','Membuat folder'],rename_folder:['<span class="mi mi-folder"></span>','Mengganti nama folder'],delete_folder:['<span class="mi mi-folder"></span>','Menghapus folder'],share:['<span class="mi mi-share"></span>','Membuat link berbagi'],favorite:['<span class="mi mi-star"></span>','Menandai favorit'],unfavorite:['<span class="mi mi-star"></span>','Menghapus dari favorit'],switch_account:['<span class="mi mi-person"></span>','Beralih akun'],login:['<span class="mi mi-vpn-key"></span>','Masuk']};
 function localISO(d){const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
 function fmtDT(iso){if(!iso)return'';const d=new Date(iso);return d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})+', '+d.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}
 function initActivity(){
@@ -1310,7 +1310,7 @@ function initPhotos(){
     let h='<button class="lchip'+(!S.fav&&!S.labelId?' on':'')+'" data-l="">Semua</button>'
       +'<button class="lchip'+(S.fav?' on':'')+'" data-l="__fav">★ Favorit</button>';
     h+=S.labels.map(l=>'<button class="lchip'+(String(S.labelId)===String(l.id)?' on':'')+'" data-l="'+l.id+'"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.icon)+' '+esc(l.name)+'</button>').join('');
-    h+='<button class="lchip add" data-l="__add">＋ Label</button>';
+    h+='<button class="lchip add" data-l="__add"><span class="mi mi-add"></span> Label</button>';
     c.innerHTML=h;
     c.querySelectorAll('.lchip').forEach(b=>{
       const v=b.dataset.l;let lpFired=false,t=null;
@@ -1328,12 +1328,12 @@ function initPhotos(){
   }
   function labelDialog(ex){
     ex=ex||{};
-    const m=modal('<h3>'+(ex.id?'✏️ Ubah label':'🏷 Label baru')+'</h3>'
+    const m=modal('<h3>'+(ex.id?'<span class="mi mi-edit"></span> Ubah label':'<span class="mi mi-label"></span> Label baru')+'</h3>'
       +'<input id="lbName" maxlength="30" placeholder="Nama label" value="'+esc(ex.name||'')+'">'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="lbColors">'
       +LBL_COLORS.map(c2=>'<button data-c="'+c2+'" style="width:32px;height:32px;border-radius:50%;background:'+c2+';border:3px solid '+((ex.color||'#4f8cff')===c2?'#fff':'transparent')+';cursor:pointer" aria-label="'+c2+'"></button>').join('')+'</div>'
       +'<input id="lbIcon" maxlength="8" placeholder="Ikon emoji (opsional)" value="'+esc(ex.icon||'')+'" style="width:160px">'
-      +'<div class="row"><button class="btn" id="lbCancel">Batal</button><button class="btn ghost" id="lbManage">⚙ Kelola</button>'
+      +'<div class="row"><button class="btn" id="lbCancel">Batal</button><button class="btn ghost" id="lbManage"><span class="mi mi-settings"></span> Kelola</button>'
       +(ex.id?'<button class="btn danger" id="lbDel">Hapus</button>':'')
       +'<button class="btn primary" id="lbSave">Simpan</button></div>');
     let color=ex.color||'#4f8cff';
@@ -1361,14 +1361,14 @@ function initPhotos(){
   async function manageLabels(){
     let labels=[];
     try{labels=(await api('/api/labels?covers=1')).labels||[]}catch(e){}
-    const m=modal('<h3>🏷 Kelola Label</h3>'
+    const m=modal('<h3><span class="mi mi-label"></span> Kelola Label</h3>'
       +(labels.length?'<div class="labgrid">'
         +labels.map(l=>'<div class="labcard" data-l="'+l.id+'"><div class="collage">'
           +(l.covers||[]).map(id=>'<img src="/file/'+id+'/thumb" loading="lazy" onerror="this.remove()">').join('')
           +'</div><div class="lbody"><div class="lname"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.icon)+' '+esc(l.name)+'</div><div class="lcount">'+l.file_count+' foto</div></div></div>').join('')
         +'</div>'
         :'<p class="muted" style="font-size:.88rem">Belum ada label. Buat label pertamamu!</p>')
-      +'<div class="row" style="margin-top:16px"><button class="btn primary" id="mlAdd">＋ Label baru</button><button class="btn" id="mlClose">Tutup</button></div>');
+      +'<div class="row" style="margin-top:16px"><button class="btn primary" id="mlAdd"><span class="mi mi-add"></span> Label baru</button><button class="btn" id="mlClose">Tutup</button></div>');
     m.querySelector('#mlClose').onclick=()=>m.remove();
     m.querySelector('#mlAdd').onclick=()=>{m.remove();labelDialog()};
     m.querySelectorAll('.labcard').forEach(c=>c.onclick=()=>{
@@ -1380,7 +1380,7 @@ function initPhotos(){
     return new Promise(res=>{
       if(!S.labels.length){notify('Buat label dulu lewat ＋ Label.','info');res(null);return}
       const picked=new Set();
-      const m=modal('<h3>🏷 Tambah label</h3><p class="muted" style="font-size:.85rem;margin-bottom:4px">Pilih label untuk '+sel.ids.size+' foto:</p><div class="labpick">'
+      const m=modal('<h3><span class="mi mi-label"></span> Tambah label</h3><p class="muted" style="font-size:.85rem;margin-bottom:4px">Pilih label untuk '+sel.ids.size+' foto:</p><div class="labpick">'
         +S.labels.map(l=>'<button class="lchip" data-l="'+l.id+'"><span class="dot" style="background:'+esc(l.color)+'"></span>'+esc(l.name)+'</button>').join('')
         +'</div><div class="row"><button class="btn" id="plNo">Batal</button><button class="btn primary" id="plYes">Terapkan</button></div>');
       m.querySelectorAll('.lchip').forEach(b=>b.onclick=()=>{const id=b.dataset.l;
@@ -1455,14 +1455,14 @@ function initPhotos(){
       +(labs.length>3?'<span class="more">+'+(labs.length-3)+'</span>':'')+'</div>';
   }
   function thumb(f,gi){
-    const fb=f.kind==='video'?'🎬':'🖼';
-    return '<div class="fitem" data-gi="'+gi+'"><div class="chk">✓</div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge">▶</div>':'')+'</div>';
+    const fb=f.kind==='video'?'<span class="mi mi-movie"></span>':'<span class="mi mi-image"></span>';
+    return '<div class="fitem" data-gi="'+gi+'"><div class="chk"><span class="mi mi-check"></span></div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge"><span class="mi mi-play-arrow"></span></div>':'')+'</div>';
   }
   // thumbnail grid justified: lebar mengikuti rasio aspek (width/height dari DB)
   function thumbJ(f,gi){
     const ar=(f.width>0&&f.height>0)?(f.width/f.height):1;
-    const fb=f.kind==='video'?'🎬':'🖼';
-    return '<div class="fitem" data-gi="'+gi+'" style="--ar:'+ar.toFixed(3)+'"><div class="chk">✓</div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge">▶</div>':'')+'</div>';
+    const fb=f.kind==='video'?'<span class="mi mi-movie"></span>':'<span class="mi mi-image"></span>';
+    return '<div class="fitem" data-gi="'+gi+'" style="--ar:'+ar.toFixed(3)+'"><div class="chk"><span class="mi mi-check"></span></div><div class="thumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+fb+'</div>'+dotsFor(f)+(f.kind==='video'?'<div class="vbadge"><span class="mi mi-play-arrow"></span></div>':'')+'</div>';
   }
   async function load(){
     const p=new URLSearchParams({folder:'all',sort:S.sort,order:S.order,kinds:'photo,video',with_labels:'1'});
@@ -1481,7 +1481,7 @@ function initPhotos(){
     if(S.view==='list'){
       tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k.slice(0,7)))+'" data-yl="'+k.slice(0,4)+'"><div class="tl-head">'+esc(dhead(k))+' <span class="tl-count">'+groups[k].length+' item</span></div>'+
         groups[k].map(f=>{const gi=files.indexOf(f);
-          return '<div class="prow'+(sel.mode?' selecting':'')+'" data-gi="'+gi+'"><div class="chk">✓</div><div class="pthumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+(f.kind==='video'?'🎬':'🖼')+'</div><div class="pmeta"><div class="nm">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' · '+esc(dlabel(f))+'</div></div></div>'}).join('')+'</div>').join('');
+          return '<div class="prow'+(sel.mode?' selecting':'')+'" data-gi="'+gi+'"><div class="chk"><span class="mi mi-check"></span></div><div class="pthumb"><img src="/file/'+f.id+'/thumb" loading="lazy" onerror="this.remove()">'+(f.kind==='video'?'<span class="mi mi-movie"></span>':'<span class="mi mi-image"></span>')+'</div><div class="pmeta"><div class="nm">'+esc(f.name)+'</div><div class="sz">'+fmtSize(f.size)+' · '+esc(dlabel(f))+'</div></div></div>'}).join('')+'</div>').join('');
     }else if(S.view==='grid'){
       // grid justified: tinggi baris seragam, lebar ikut rasio aspek (data width/height DB)
       tl.innerHTML=keys.map(k=>'<div class="tl-group" data-ml="'+esc(mlabel(k.slice(0,7)))+'" data-yl="'+k.slice(0,4)+'"><div class="tl-head">'+esc(dhead(k))+' <span class="tl-count">'+groups[k].length+' item</span></div><div class="tl-jgrid'+(sel.mode?' selecting':'')+'">'+
@@ -1555,10 +1555,11 @@ function initPhotos(){
     m.querySelectorAll('button').forEach(b=>b.onclick=ev=>{ev.stopPropagation();const[s,o]=b.dataset.v.split('-');S.sort=s;S.order=o;closeSortMenu();exitPSelMode();load()});
     setTimeout(()=>document.addEventListener('click',closeSortMenu,{once:true}),0);
   };
-  const VIEWS=['grid','compact','list'],VICON={grid:'▦',compact:'▤',list:'☰'},VNAME={grid:'Grid nyaman',compact:'Grid rapat',list:'Daftar'};
+  const VIEWS=['grid','compact','list'],VICON={grid:'mi-grid-view',compact:'mi-view-module',list:'mi-view-list'},VNAME={grid:'Grid nyaman',compact:'Grid rapat',list:'Daftar'};
   const pvb=document.getElementById('pviewBtn');
-  pvb.textContent=VICON[S.view]||'▦';pvb.title='Tampilan: '+(VNAME[S.view]||VNAME.grid);
-  pvb.onclick=()=>{S.view=VIEWS[(VIEWS.indexOf(S.view)+1)%VIEWS.length];pvb.textContent=VICON[S.view];pvb.title='Tampilan: '+VNAME[S.view];load()};
+  function setViewIcon(){pvb.innerHTML='<span class="mi '+VICON[S.view]+'"></span>';pvb.title='Tampilan: '+VNAME[S.view]}
+  setViewIcon();
+  pvb.onclick=()=>{S.view=VIEWS[(VIEWS.indexOf(S.view)+1)%VIEWS.length];setViewIcon();load()};
   /* ---------- auto-hide toolbar foto saat scroll ---------- */
   const fbarWrap=document.getElementById('fbarWrap');
   let barH=0,lastST=0;
