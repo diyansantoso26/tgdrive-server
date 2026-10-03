@@ -616,18 +616,19 @@ def api_files():
         except (TypeError, ValueError):
             pass
     # purge otomatis: file di tong sampah > 7 hari dihapus permanen (termasuk dari Telegram)
-    if request.args.get('trashed') == '1':
+    is_trash = request.args.get('trashed') == '1'
+    if is_trash:
         for f in db.trashed_older_than(uid(), days=7):
             try:
                 _permanent_delete(f)
             except Exception:
                 pass
     files = db.list_files(uid(),
-        folder_id=folder_id,
+        folder_id=None if is_trash else folder_id,  # tong sampah: semua folder
         q=request.args.get('q', '').strip() or None,
         sort=request.args.get('sort', 'date'),
         order=request.args.get('order', 'desc'),
-        trashed=1 if request.args.get('trashed') == '1' else 0,
+        trashed=1 if is_trash else 0,
         favorites_only=request.args.get('fav') == '1',
         kind_in=request.args.get('kinds').split(',') if request.args.get('kinds') else None,
         label_id=request.args.get('label_id') or None,
