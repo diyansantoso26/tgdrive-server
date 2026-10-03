@@ -641,6 +641,13 @@ function initDrive(){
 
   /* pill aktivitas live di menubar — muncul hanya saat ada upload */
   const liveMap=new Map();let liveId=0;
+  /* cegah refresh/tutup tak sengaja saat upload berjalan */
+  const _upActive=new Set();let _upSeq=0;
+  const upStart=()=>{const id=++_upSeq;_upActive.add(id);return id};
+  const upDone=id=>{_upActive.delete(id)};
+  window.addEventListener('beforeunload',e=>{
+    if(_upActive.size){e.preventDefault();e.returnValue='';}
+  });
   function liveRefresh(){
     const pill=document.getElementById('livepill');if(!pill)return;
     let sp=0;liveMap.forEach(v=>sp+=v);
@@ -657,9 +664,14 @@ function initDrive(){
   if(fiF)fiF.onchange=()=>{const items=[...fiF.files].map(f=>({file:f,rel:f.webkitRelativePath||f.name}));fiF.value='';uploadRelFiles(items)};
   ['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();hint.classList.remove('hidden')}));
   ['dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();if(ev==='dragleave'&&e.relatedTarget)return;hint.classList.add('hidden')}));
-  document.addEventListener('drop',e=>{
+  document.addEventListener('drop',async e=>{
     const items=[...(e.dataTransfer.items||[])].filter(it=>it.kind==='file');
     if(!items.length)return;
+    /* simpan handle FS API bila tersedia → memungkinkan auto-resume setelah refresh */
+    if(FS_API){for(const it of items){try{
+      const h=it.getAsFileSystemHandle?await it.getAsFileSystemHandle():null;
+      if(h&&h.kind==='file'){const f=await h.getFile();rememberHandle(f,h)}
+    }catch(err){}}}
     const entries=items.map(it=>it.webkitGetAsEntry?it.webkitGetAsEntry():null);
     if(entries.some(en=>en&&en.isDirectory)&&entries.every(Boolean))uploadDropEntries(entries);
     else if(e.dataTransfer.files.length)uploadFiles(e.dataTransfer.files);
@@ -804,6 +816,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     attempt=attempt||1;
     const MAX_TRY=3;
     const lid=++liveId;liveMap.set(lid,0);liveRefresh();
+    const upid=upStart();
     return new Promise(resolve=>{
     const row=qitem(f.name,'Menunggu…');
     const fd=new FormData();fd.append('file',f);
@@ -816,7 +829,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       const now=Date.now(),dt=(now-trk.t)/1000;
       if(dt>=0.5){const s=(e.loaded-trk.l)/dt;trk.t=now;trk.l=e.loaded;
         row.spd.textContent=s>0?fmtSpd(s)+' • sisa '+fmtETA((e.total-e.loaded)/s):'';liveMap.set(lid,s);liveRefresh();}}};
-    const done=()=>{liveMap.delete(lid);liveRefresh();resolve()};
+    const done=()=>{upDone(upid);liveMap.delete(lid);liveRefresh();resolve()};
     // Cek duplikat ulang sebelum retry: percobaan sebelumnya mungkin sebenarnya
     // sudah masuk server (responsnya saja yang hilang, mis. 502) — jangan double.
     const dupNow=()=>api('/api/check-duplicate',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -859,6 +872,33 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   function clearLocalSession(id){try{const k='tgd_uploads';localStorage.setItem(k,JSON.stringify(JSON.parse(localStorage.getItem(k)||'[]').filter(y=>y.upload_id!==id)))}catch(e){}}
   function getLocalSessions(){try{return JSON.parse(localStorage.getItem('tgd_uploads')||'[]')}catch(e){return[]}}
 
+  /* ---------- File System Access API: handle file untuk auto-resume ----------
+     Browser keamanan: objek File dari <input> hilang saat refresh. Handle FS API
+     (Chromium desktop) bisa disimpan di IndexedDB & dipakai lagi tanpa pilih ulang. */
+  const FS_API=typeof DataTransferItem!=='undefined'&&'getAsFileSystemHandle' in DataTransferItem.prototype;
+  const fkey=f=>f.name+'|'+f.size+'|'+f.lastModified;
+  function idbOpen(){return new Promise((res,rej)=>{try{
+    const r=indexedDB.open('tgdrive',1);
+    r.onupgradeneeded=()=>{r.result.createObjectStore('handles',{keyPath:'key'})};
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);
+  }catch(e){rej(e)}})}
+  async function idbTx(mode,fn){try{const db=await idbOpen();
+    const v=await new Promise((res,rej)=>{const t=db.transaction('handles',mode);
+      const q=fn(t.objectStore('handles'));q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)});
+    db.close();return v}catch(e){return null}}
+  const idbPutHandle=(key,handle)=>idbTx('readwrite',st=>{const q=st.put({key:key,handle:handle});return q});
+  const idbGetHandle=key=>idbTx('readonly',st=>st.get(key)).then(v=>v&&v.handle||null);
+  const idbDelHandle=key=>idbTx('readwrite',st=>st.delete(key));
+  function rememberHandle(f,h){if(!h)return;try{f._fh=h}catch(e){}
+    idbPutHandle('fh:'+fkey(f),h)}
+  // ambil File dari handle bila izin baca masih ada (tanpa perlu gesture user)
+  async function handleGetFile(h){try{
+    let p=await h.queryPermission({mode:'read'});
+    if(p!=='granted'){try{p=await h.requestPermission({mode:'read'})}catch(e){return null}}
+    if(p!=='granted')return null;
+    return await h.getFile();
+  }catch(e){return null}}
+
   // tombol Jeda/Lanjut + Batal untuk baris upload chunked
   function addChunkControls(row,ctx,lbl){
     const ctl=document.createElement('span');ctl.style.marginLeft='8px';
@@ -873,6 +913,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
         if(ctx.token)fd.append('transfer_token',ctx.token);
         await fetch((ctx.base||'')+'/api/upload/cancel',{method:'POST',body:fd})}}catch(e){}
       if(ctx.upload_id)clearLocalSession(ctx.upload_id);
+      if(ctx.upload_id)idbDelHandle('fhu:'+ctx.upload_id);
       lbl.textContent='Dibatalkan. ';ctl.remove();setTimeout(()=>row.el.remove(),2000)};
     return ctl;
   }
@@ -936,6 +977,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
   }
 
   async function doUploadChunked(f,overwriteId,folderId,clientKey){
+    const upid=upStart();
     const row=qitem(f.name,'');
     const lbl=document.createElement('span');row.status.appendChild(lbl);
     const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0,base:'',token:''};
@@ -950,11 +992,16 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       saveLocalSession({upload_id:init.upload_id,name:f.name,size:f.size,lastModified:f.lastModified,
         folderId:folderId,chunk_size:init.chunk_size,total:init.total_chunks,
         base:ctx.base,token:ctx.token});
+      /* kaitkan handle file (bila ada) dengan sesi ini → auto-resume setelah refresh */
+      {const h=f._fh||await idbGetHandle('fh:'+fkey(f));if(h)await idbPutHandle('fhu:'+init.upload_id,h)}
       const j=await runChunkedUpload(ctx);
       clearLocalSession(ctx.upload_id);
+      idbDelHandle('fhu:'+ctx.upload_id);
+      upDone(upid);
       lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
       ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
     }catch(e){
+      upDone(upid);
       if(ctx.cancelled)return;
       row.el.classList.add('err');ctl.remove();
       lbl.textContent='Gagal: '+e.message+' ';
@@ -986,22 +1033,34 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
         const ls0=getLocalSessions().find(x=>x.upload_id===s.upload_id)||{};
         if(ls0.token)fd.append('transfer_token',ls0.token);
         await fetch((ls0.base||'')+'/api/upload/cancel',{method:'POST',body:fd})}catch(e){}
-        clearLocalSession(s.upload_id);row.el.remove()};
-      inp.onchange=async()=>{
-        const f=inp.files[0];if(!f)return;
+        clearLocalSession(s.upload_id);idbDelHandle('fhu:'+s.upload_id);row.el.remove()};
+      async function startResume(f){
         if(f.name!==s.name||f.size!==s.size){lbl.textContent='File tidak cocok — nama & ukuran harus sama persis dengan sebelumnya. ';return}
         bp.remove();bc.remove();inp.remove();
         const ls=getLocalSessions().find(x=>x.upload_id===s.upload_id)||{};
         const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:s.upload_id,chunk_size:s.chunk_size,total:s.total_chunks,
           base:ls.base||'',token:ls.token||''};
+        const upid=upStart();
         const ctl=addChunkControls(row,ctx,lbl);
         try{
           const j=await runChunkedUpload(ctx);
           clearLocalSession(s.upload_id);
+          idbDelHandle('fhu:'+s.upload_id);
           lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
           ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
         }catch(e){if(!ctx.cancelled){row.el.classList.add('err');ctl.remove();lbl.textContent='Gagal: '+e.message}}
-      };
+        upDone(upid);
+      }
+      inp.onchange=async()=>{const f=inp.files[0];if(f)startResume(f)};
+      /* auto-resume: coba handle file tersimpan (Chromium desktop) */
+      (async()=>{
+        const h=await idbGetHandle('fhu:'+s.upload_id);
+        if(!h)return;
+        lbl.textContent='Mencoba melanjutkan otomatis… ';
+        const f=await handleGetFile(h);
+        if(f&&f.name===s.name&&f.size===s.size){lbl.textContent='Melanjutkan otomatis… ';startResume(f)}
+        else lbl.textContent='Belum selesai ('+s.received+'/'+s.total_chunks+' potongan). Pilih file yang sama untuk melanjutkan. ';
+      })();
     }
   }
 
@@ -1010,6 +1069,22 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     queue.appendChild(el);return{el,status:el.querySelector('span'),spd:el.querySelector('.spd'),bar:el.querySelector('.bar i')}}
 
   /* toolbar */
+  /* tombol Upload file: pakai File System Access API bila tersedia (handle tersimpan
+     untuk auto-resume); fallback ke <input> biasa di browser lain / HP */
+  const upFileBtn=document.getElementById('upFileBtn');
+  if(upFileBtn)upFileBtn.onclick=async()=>{
+    document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));
+    if(window.showOpenFilePicker){
+      try{
+        const hs=await window.showOpenFilePicker({multiple:true});
+        const files=[];
+        for(const h of hs){const f=await h.getFile();rememberHandle(f,h);files.push(f)}
+        if(files.length)uploadFiles(files);
+        return;
+      }catch(e){if(e&&e.name==='AbortError')return}
+    }
+    document.getElementById('fileInput').click();
+  };
   document.getElementById('sort').onchange=e=>{const[s,o]=e.target.value.split('-');S.sort=s;S.order=o;load()};
   let qt;document.getElementById('q').oninput=e=>{clearTimeout(qt);qt=setTimeout(()=>{S.q=e.target.value.trim();load()},350)};
   document.getElementById('viewToggle').onclick=e=>{S.view=S.view==='grid'?'list':'grid';e.currentTarget.innerHTML='<span class="mi '+(S.view==='grid'?'mi-grid-view':'mi-view-list')+'"></span>';load()};
