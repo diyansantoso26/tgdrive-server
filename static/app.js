@@ -650,9 +650,69 @@ function initDrive(){
   });
   function liveRefresh(){
     const pill=document.getElementById('livepill');if(!pill)return;
-    let sp=0;liveMap.forEach(v=>sp+=v);
-    if(liveMap.size){pill.classList.remove('hidden');pill.textContent='⬆ '+fmtSpd(sp)+' · '+liveMap.size+' file'}
+    let sp=0,n=0;liveMap.forEach(v=>{sp+=v;n++});
+    upCtxs.forEach(c=>{if(!c.cancelled){n++;sp+=c._spd||0}});
+    const q=document.getElementById('queue');
+    if(n&&q&&q.classList.contains('hidden')){pill.classList.remove('hidden');pill.textContent='⬆ '+fmtSpd(sp)+' · '+n+' file'}
     else pill.classList.add('hidden');
+  }
+  /* ---------- panel upload ala TeraCopy ---------- */
+  const upCtxs=new Set();
+  let upTickTimer=null;
+  const fmtB=b=>b>=1073741824?(b/1073741824).toFixed(1)+' GB':b>=1048576?(b/1048576).toFixed(1)+' MB':b>=1024?(b/1024).toFixed(1)+' KB':Math.round(b)+' B';
+  function upEnsureHead(){
+    const q=document.getElementById('queue');if(!q||document.getElementById('upHead'))return;
+    const h=document.createElement('div');h.id='upHead';h.className='up-head';
+    h.innerHTML='<div class="up-head-top"><b id="upHeadTitle">Mengupload</b><span class="up-head-btns">'
+      +'<button id="upPauseAll" class="btn ghost">Jeda semua</button>'
+      +'<button id="upCancelAll" class="btn ghost">Batal semua</button>'
+      +'<button id="upMin" class="btn ghost" title="Kecilkan">–</button></span></div>'
+      +'<div class="bar up-totalbar"><i id="upTotalBar"></i></div>'
+      +'<div id="upTotalTxt" class="up-totaltxt"></div>';
+    q.insertBefore(h,q.firstChild);
+    document.getElementById('upPauseAll').onclick=()=>{
+      if(!upCtxs.size)return;
+      const allPaused=[...upCtxs].every(c=>c.paused||c.cancelled);
+      upCtxs.forEach(c=>{if(c.cancelled)return;c.paused=!allPaused;
+        if(c._bP)c._bP.textContent=c.paused?'Lanjut':'Jeda';
+        if(c._lbl)c._lbl.textContent=c.paused?'Dijeda. ':'Mengupload… ';
+        if(!c.paused&&c._resume)c._resume()});
+      upTick();
+    };
+    document.getElementById('upCancelAll').onclick=()=>{
+      upCtxs.forEach(c=>{c.cancelled=true;if(c._resume)c._resume()});
+    };
+    document.getElementById('upMin').onclick=()=>{
+      document.getElementById('queue').classList.add('hidden');liveRefresh();
+    };
+  }
+  function upReg(ctx){upEnsureHead();upCtxs.add(ctx);
+    const q=document.getElementById('queue');if(q)q.classList.remove('hidden');upTick()}
+  function upUnreg(ctx){upCtxs.delete(ctx);upTick()}
+  function upTick(){
+    const q=document.getElementById('queue');if(!q)return;
+    let tot=0,done=0,spd=0,n=0;
+    upCtxs.forEach(c=>{if(c.cancelled)return;n++;tot+=c.file.size;
+      done+=Math.min((c._done||0)*(c._cs||c.file.size),c.file.size);spd+=c._spd||0});
+    if(upCtxs.size){
+      upEnsureHead();
+      const bar=document.getElementById('upTotalBar'),txt=document.getElementById('upTotalTxt'),
+            ttl=document.getElementById('upHeadTitle'),pb=document.getElementById('upPauseAll');
+      if(bar)bar.style.width=(tot?Math.round(done/tot*100):0)+'%';
+      if(txt)txt.textContent=fmtB(done)+' dari '+fmtB(tot)+(spd>0?' • '+fmtSpd(spd):'')
+        +(spd>0&&done<tot?' • sisa '+fmtETA((tot-done)/spd):'');
+      if(ttl)ttl.textContent='Mengupload '+n+' file';
+      if(pb)pb.textContent=[...upCtxs].every(c=>c.paused||c.cancelled)?'Lanjut semua':'Jeda semua';
+      if(!upTickTimer)upTickTimer=setInterval(upTick,1000);
+    }else{
+      if(upTickTimer){clearInterval(upTickTimer);upTickTimer=null}
+      const rows=q.querySelectorAll('.qitem').length;
+      const ttl2=document.getElementById('upHeadTitle'),txt2=document.getElementById('upTotalTxt'),
+            bar2=document.getElementById('upTotalBar');
+      if(rows){if(ttl2)ttl2.textContent='Antrean upload';if(txt2)txt2.textContent='';if(bar2)bar2.style.width='0%'}
+      else q.classList.add('hidden');
+    }
+    liveRefresh();
   }
   const _lp=document.getElementById('livepill');
   if(_lp)_lp.onclick=()=>{const q=document.getElementById('queue');if(q){q.classList.remove('hidden');q.scrollIntoView({behavior:'smooth',block:'start'})}};
@@ -788,21 +848,18 @@ function initDrive(){
     async function worker(){
       while(idx<ready.length){
         const j=ready[idx++];
-        const big=j.f.size>=LIM.cfLimit;
-        if(big){
-          // MODE 2: >=100MB khusus PRO, chunked via direct (hindari timeout Cloudflare)
-          if(!LIM.chunked){
-            // admin mematikan mode resume: PRO bisa single POST bila sudah di direct,
-            // di domain tawarkan pindah manual (fallback kontekstual Mode Besar)
-            if(ON_DIRECT)await doUploadP(j.f,j.overwriteId,j.folderId,1);
-            else{const r0=qitem(j.f.name,'');r0.status.innerHTML='Mode resume dimatikan admin. Pindah manual untuk upload file ini. ';
-              const mb=document.createElement('button');mb.className='btn ghost';
-              mb.style.cssText='padding:2px 10px;font-size:.78rem';mb.innerHTML='<span class="mi mi-bolt"></span> Mode Besar';
-              mb.onclick=()=>handoffGo(LIM.directUrl);r0.status.appendChild(mb)}
-            continue;
-          }
-          await doUploadChunked(j.f,j.overwriteId,j.folderId);
-        }else await doUploadP(j.f,j.overwriteId,j.folderId,1); // MODE 1: <100MB single POST via domain
+        // OPSI 1: SEMUA ukuran file via chunked — jeda/lanjut/batal/ulangi + auto-resume
+        // seragam (chunk 5MB; file kecil = 1 potongan).
+        if(!LIM.chunked){
+          // admin mematikan chunked: fallback single POST (tanpa jeda/lanjut)
+          if(ON_DIRECT)await doUploadP(j.f,j.overwriteId,j.folderId,1);
+          else{const r0=qitem(j.f.name,'');r0.status.innerHTML='Mode chunked dimatikan admin. Pindah manual untuk upload file ini. ';
+            const mb=document.createElement('button');mb.className='btn ghost';
+            mb.style.cssText='padding:2px 10px;font-size:.78rem';mb.innerHTML='<span class="mi mi-bolt"></span> Mode Besar';
+            mb.onclick=()=>handoffGo(LIM.directUrl);r0.status.appendChild(mb)}
+          continue;
+        }
+        await doUploadChunked(j.f,j.overwriteId,j.folderId);
       }
     }
     await Promise.all([worker(),worker(),worker()]);
@@ -905,6 +962,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     const bP=document.createElement('button');bP.className='btn ghost';bP.style.cssText='padding:2px 10px;font-size:.78rem';bP.textContent='Jeda';
     const bC=document.createElement('button');bC.className='btn ghost';bC.style.cssText='padding:2px 10px;font-size:.78rem;margin-left:6px';bC.textContent='Batal';
     ctl.appendChild(bP);ctl.appendChild(bC);row.status.appendChild(ctl);
+    ctx._bP=bP;ctx._lbl=lbl;
     bP.onclick=()=>{ctx.paused=!ctx.paused;bP.textContent=ctx.paused?'Lanjut':'Jeda';
       if(ctx.paused)lbl.textContent='Dijeda — klik Lanjut untuk meneruskan. ';
       else{if(ctx._resume)ctx._resume()}};
@@ -929,6 +987,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     try{const st=token?(await(await fetch(statusUrl)).json()):(await api(statusUrl));
       have=new Set(st.received||[])}catch(e){}
     let done=have.size;
+    ctx._done=done;ctx._cs=chunk_size;ctx._total=total;ctx._spd=0;
     const setPct=()=>{const pc=Math.round(done/total*100);row.bar.style.width=pc+'%';return pc};
     setPct();
     if(done>0)lbl.textContent='Melanjutkan dari '+Math.round(done/total*100)+'%… ';
@@ -953,7 +1012,8 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       }
       if(!ok)throw new Error('Potongan '+(i+1)+'/'+total+' gagal: '+lastErr);
       const pc=setPct(),now=Date.now(),dt=(now-lastT)/1000;
-      if(dt>=0.5){const b=done*chunk_size,spd=(b-lastB)/dt;lastT=now;lastB=b;
+      ctx._done=done;
+      if(dt>=0.5){const b=done*chunk_size,spd=(b-lastB)/dt;lastT=now;lastB=b;ctx._spd=spd;
         row.spd.textContent=fmtSpd(spd)+' • '+pc+'%'}
       lbl.textContent='Mengupload '+done+'/'+total+' potongan… ';
     }
@@ -982,6 +1042,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     const lbl=document.createElement('span');row.status.appendChild(lbl);
     const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0,base:'',token:''};
     const ctl=addChunkControls(row,ctx,lbl);
+    upReg(ctx);
     clientKey=clientKey||('ck_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10));
     try{
       lbl.textContent='Menyiapkan… ';
@@ -997,11 +1058,11 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       const j=await runChunkedUpload(ctx);
       clearLocalSession(ctx.upload_id);
       idbDelHandle('fhu:'+ctx.upload_id);
-      upDone(upid);
+      upDone(upid);upUnreg(ctx);
       lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
       ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
     }catch(e){
-      upDone(upid);
+      upDone(upid);upUnreg(ctx);
       if(ctx.cancelled)return;
       row.el.classList.add('err');ctl.remove();
       lbl.textContent='Gagal: '+e.message+' ';
@@ -1042,6 +1103,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
           base:ls.base||'',token:ls.token||''};
         const upid=upStart();
         const ctl=addChunkControls(row,ctx,lbl);
+        upReg(ctx);
         try{
           const j=await runChunkedUpload(ctx);
           clearLocalSession(s.upload_id);
@@ -1049,7 +1111,7 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
           lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
           ctl.remove();setTimeout(()=>{row.el.remove();loadFolders();load()},2500);
         }catch(e){if(!ctx.cancelled){row.el.classList.add('err');ctl.remove();lbl.textContent='Gagal: '+e.message}}
-        upDone(upid);
+        upDone(upid);upUnreg(ctx);
       }
       inp.onchange=async()=>{const f=inp.files[0];if(f)startResume(f)};
       /* auto-resume: coba handle file tersimpan (Chromium desktop) */
@@ -1070,11 +1132,13 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
 
   /* toolbar */
   /* tombol Upload file: pakai File System Access API bila tersedia (handle tersimpan
-     untuk auto-resume); fallback ke <input> biasa di browser lain / HP */
+     untuk auto-resume); fallback ke <input> biasa di browser lain / HP.
+     Flag debug ?nofsa=1 memaksa jalur input (untuk otomasi uji). */
+  const NO_FSA=new URLSearchParams(location.search).has('nofsa');
   const upFileBtn=document.getElementById('upFileBtn');
   if(upFileBtn)upFileBtn.onclick=async()=>{
     document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));
-    if(window.showOpenFilePicker){
+    if(window.showOpenFilePicker&&!NO_FSA){
       try{
         const hs=await window.showOpenFilePicker({multiple:true});
         const files=[];
