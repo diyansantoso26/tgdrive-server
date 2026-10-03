@@ -74,6 +74,14 @@
 
 <div id="dropHint" class="drophint hidden">Lepaskan file / folder untuk mengupload</div>
 <div id="queue" class="queue hidden"></div>
+<button id="upFloat" class="up-float hidden" title="Upload — klik untuk buka panel" aria-label="Buka panel upload">
+  <svg viewBox="0 0 60 60" class="up-ring" aria-hidden="true">
+    <circle cx="30" cy="30" r="26" class="up-ring-bg"/>
+    <circle cx="30" cy="30" r="26" class="up-ring-fg" id="upRingFg"/>
+  </svg>
+  <span class="up-float-icon"><span class="mi mi-upload"></span></span>
+  <span class="up-float-badge hidden" id="upFloatBadge">0</span>
+</button>
 <div id="ctxmenu" class="ctxmenu hidden"></div>
 <div id="lockNote" class="locknote hidden"></div>
 <div id="grid" class="grid"></div>
