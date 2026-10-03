@@ -169,6 +169,9 @@ def init_db():
     # migrasi: flag kunci folder
     if 'is_locked' not in _table_cols(conn, 'folders'):
         conn.execute('ALTER TABLE folders ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0')
+    # migrasi: nama tampilan user
+    if 'display_name' not in _table_cols(conn, 'users'):
+        conn.execute('ALTER TABLE users ADD COLUMN display_name TEXT')
     # migrasi multi-user: kolom user_id di semua tabel data
     for tbl in ('files', 'folders', 'tg_accounts', 'shares', 'activity_log'):
         if 'user_id' not in _table_cols(conn, tbl):
@@ -826,7 +829,7 @@ def create_user(username, password_hash, role='user', is_pro=0, quota_mb=102400)
 
 def get_user(uid):
     conn = get_db()
-    r = conn.execute('SELECT id, username, role, is_pro, quota_mb, is_active, created_at'
+    r = conn.execute('SELECT id, username, role, is_pro, quota_mb, is_active, created_at, display_name'
                      ' FROM users WHERE id=?', (uid,)).fetchone()
     conn.close()
     return _row_to_dict(r)
@@ -843,7 +846,7 @@ def get_user_auth(username):
 def list_users():
     conn = get_db()
     rows = conn.execute(
-        'SELECT u.id, u.username, u.role, u.is_pro, u.quota_mb, u.is_active, u.created_at,'
+        'SELECT u.id, u.username, u.display_name, u.role, u.is_pro, u.quota_mb, u.is_active, u.created_at,'
         ' (SELECT COALESCE(SUM(f.size),0) FROM files f WHERE f.user_id=u.id AND f.trashed=0) AS used_bytes,'
         ' (SELECT COUNT(*) FROM files f WHERE f.user_id=u.id AND f.trashed=0) AS file_count'
         ' FROM users u ORDER BY u.id').fetchall()
