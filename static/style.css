@@ -128,7 +128,7 @@ label.btn{cursor:pointer}
 .tl-grid .fitem .thumb{aspect-ratio:1}
 
 /* lightbox */
-.lightbox{position:fixed;inset:0;background:#000e;z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.lightbox{position:fixed;inset:0;background:#000e;z-index:100;display:flex;align-items:center;justify-content:center;flex-direction:column;touch-action:pan-y}
 .lb-body{max-width:92vw;max-height:84vh;display:flex;align-items:center;justify-content:center}
 .lb-body img,.lb-body video{max-width:92vw;max-height:80vh;border-radius:8px}
 .lb-cap{margin-top:10px;color:#ccc;font-size:.9rem}
