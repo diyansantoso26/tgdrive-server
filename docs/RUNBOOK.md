@@ -85,3 +85,14 @@ sudo systemctl restart tgdrive       # restart
 sudo journalctl -u tgdrive -f        # log
 sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
 ```
+
+## Sistem lisensi
+
+- Paket: PRO Bulanan (30 hari) / PRO Tahunan (365 hari) / PRO Lifetime.
+- Admin → panel Admin → seksi **Lisensi**: buat kode (`TGDRIVE-XXXX-XXXX`), lihat status, cabut, hapus.
+- Admin → **Harga Lisensi**: isi harga tiap paket (tampil di halaman Upgrade).
+- Admin → Pengaturan: isi **nomor WhatsApp** untuk tombol konfirmasi pembayaran.
+- User: menu **⭐ Upgrade** → baca keuntungan → scan QRIS (`static/qris.jpg`) → bayar →
+  konfirmasi via WA → terima kode dari admin → redeem di halaman yang sama.
+- `is_pro()` menghormati lisensi aktif (kedaluwarsa/dicabut = PRO hilang otomatis).
+- Redeem menaikkan kuota user bila kuota lisensi lebih besar (tidak pernah turun otomatis).
