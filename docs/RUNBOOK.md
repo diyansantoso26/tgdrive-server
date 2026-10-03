@@ -111,10 +111,12 @@ sudo nano /home/tgdrive/app/.env     # konfigurasi (lalu restart)
 
 ## Revisi toolbar Drive (2026-10-03)
 
-- Breadcrumb pill pindah ke baris sendiri selebar penuh (scroll horizontal di HP).
-- Toolbar dikelompok dengan divider: [← → ↑] | [⟲ ⟳] | [pencarian flex] | [＋Baru] [⬆ Upload] [⋯].
+Desain final 2 baris, semua ikon Google Material Icons:
+- **Baris atas:** breadcrumb pill fleksibel + ikon search (klik → input full-width dengan tombol kembali/tutup).
+- **Baris bawah:** [← → ↑] [⟲ ⟳] [+ New] [⇅ sort] [▦ grid/list] [⬆ upload] [⋯].
+- Sort dropdown: Terbaru, Terlama, Nama A–Z, Nama Z–A, Terbesar, Terkecil (berlaku untuk file; folder selalu A–Z).
+- Menu ⋯ berisi: Pilih banyak, Tong Sampah, Pembersih Duplikat, Muat ulang.
 - Tombol **☑ Pilih dihapus** dari toolbar; mode pilih via tahan lama (HP) atau **⋯ → Pilih banyak** (desktop).
-- Menu ⋯ berisi: Pilih banyak, Tong Sampah.
 
 ## Tanggal foto dari nama file (2026-10-03)
 
