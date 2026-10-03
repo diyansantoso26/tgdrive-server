@@ -653,12 +653,17 @@ function initDrive(){
     let sp=0,n=0;liveMap.forEach(v=>{sp+=v;n++});
     upCtxs.forEach(c=>{if(!c.cancelled){n++;sp+=c._spd||0}});
     const q=document.getElementById('queue');
-    if(n&&q&&q.classList.contains('hidden')){pill.classList.remove('hidden');pill.textContent='⬆ '+fmtSpd(sp)+' · '+n+' file'}
+    const rows=q?q.querySelectorAll('.qitem').length:0;
+    /* pill tampil bila ada upload aktif ATAU sisa antrean (mis. gagal/Coba lagi),
+       selama panel disembunyikan — klik pill membuka panel kembali */
+    if((n>0||rows>0)&&q&&q.classList.contains('hidden')){
+      pill.classList.remove('hidden');
+      pill.textContent=n>0?('⬆ '+fmtSpd(sp)+' · '+n+' file'):('⬆ '+rows+' antrean');
+    }
     else pill.classList.add('hidden');
   }
   /* ---------- panel upload ala TeraCopy ---------- */
   const upCtxs=new Set();
-  let upTickTimer=null;
   const fmtB=b=>b>=1073741824?(b/1073741824).toFixed(1)+' GB':b>=1048576?(b/1048576).toFixed(1)+' MB':b>=1024?(b/1024).toFixed(1)+' KB':Math.round(b)+' B';
   function upEnsureHead(){
     const q=document.getElementById('queue');if(!q||document.getElementById('upHead'))return;
@@ -694,6 +699,7 @@ function initDrive(){
     let tot=0,done=0,spd=0,n=0;
     upCtxs.forEach(c=>{if(c.cancelled)return;n++;tot+=c.file.size;
       done+=Math.min((c._done||0)*(c._cs||c.file.size),c.file.size);spd+=c._spd||0});
+    const rows=q.querySelectorAll('.qitem').length;
     if(upCtxs.size){
       upEnsureHead();
       const bar=document.getElementById('upTotalBar'),txt=document.getElementById('upTotalTxt'),
@@ -703,17 +709,14 @@ function initDrive(){
         +(spd>0&&done<tot?' • sisa '+fmtETA((tot-done)/spd):'');
       if(ttl)ttl.textContent='Mengupload '+n+' file';
       if(pb)pb.textContent=[...upCtxs].every(c=>c.paused||c.cancelled)?'Lanjut semua':'Jeda semua';
-      if(!upTickTimer)upTickTimer=setInterval(upTick,1000);
-    }else{
-      if(upTickTimer){clearInterval(upTickTimer);upTickTimer=null}
-      const rows=q.querySelectorAll('.qitem').length;
+    }else if(rows){
       const ttl2=document.getElementById('upHeadTitle'),txt2=document.getElementById('upTotalTxt'),
             bar2=document.getElementById('upTotalBar');
-      if(rows){if(ttl2)ttl2.textContent='Antrean upload';if(txt2)txt2.textContent='';if(bar2)bar2.style.width='0%'}
-      else q.classList.add('hidden');
-    }
+      if(ttl2)ttl2.textContent='Antrean upload';if(txt2)txt2.textContent='';if(bar2)bar2.style.width='0%';
+    }else q.classList.add('hidden');
     liveRefresh();
   }
+  setInterval(upTick,1000);
   const _lp=document.getElementById('livepill');
   if(_lp)_lp.onclick=()=>{const q=document.getElementById('queue');if(q){q.classList.remove('hidden');q.scrollIntoView({behavior:'smooth',block:'start'})}};
 
@@ -1018,11 +1021,23 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       lbl.textContent='Mengupload '+done+'/'+total+' potongan… ';
     }
     lbl.textContent='Merakit & mengirim ke Telegram, mohon tunggu… ';row.spd.textContent='';
-    const fd=new FormData();fd.append('upload_id',upload_id);
-    if(token)fd.append('transfer_token',token);
-    const r=await fetch(base+'/api/upload/complete',{method:'POST',body:fd});
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+    /* complete dengan backoff bila Telegram rate-limit (429 + retry_after) */
+    let cj=null;
+    for(let ra=0;;ra++){
+      const fdc=new FormData();fdc.append('upload_id',upload_id);
+      if(token)fdc.append('transfer_token',token);
+      const rc=await fetch(base+'/api/upload/complete',{method:'POST',body:fdc});
+      cj=await rc.json().catch(()=>({}));
+      if(rc.ok)break;
+      if(rc.status===429&&cj.retry_after&&ra<5){
+        const w=Math.min(+cj.retry_after||30,180);
+        lbl.textContent='Telegram sibuk — menunggu '+w+' dtk lalu mengulang otomatis… ';
+        await new Promise(res=>setTimeout(res,w*1000));
+        continue;
+      }
+      throw new Error(cj.error||('HTTP '+rc.status));
+    }
+    const j=cj;
     return j;
   }
 
