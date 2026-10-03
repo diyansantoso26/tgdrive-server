@@ -76,6 +76,17 @@ label.btn{cursor:pointer}
 .qitem .bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .2s}
 .qitem.err{color:var(--danger)}
 .qitem .spd{color:var(--muted);font-size:.78rem;margin-left:8px}
+/* panel upload ala TeraCopy */
+.up-head{padding:10px 14px 12px;border-bottom:1px solid var(--line);background:var(--bg2);border-radius:12px 12px 0 0}
+.up-head-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.up-head-top b{font-size:.9rem}
+.up-head-btns{display:flex;gap:6px;align-items:center}
+.up-head-btns .btn{padding:3px 9px;font-size:.75rem}
+.up-totalbar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}
+.up-totalbar i{display:block;height:100%;background:var(--acc);width:0;transition:width .3s}
+.up-totaltxt{font-size:.75rem;color:var(--muted);margin-top:6px}
+@media(max-width:480px){.queue{left:12px;right:12px;bottom:12px;width:auto;max-height:62vh}}
+@media(max-width:480px){.up-float{right:14px;bottom:14px}}
 .crumb-sep{color:var(--muted);margin:0 2px}
 .props{margin:6px 0}
 .pr{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.88rem}
@@ -87,8 +98,16 @@ label.btn{cursor:pointer}
 .ctxmenu button:hover{background:var(--bg2)}
 .kebab{font-size:.95rem !important;line-height:1}
 @media(hover:none){.fitem .acts{display:flex}}
-/* pill aktivitas live di menubar */
-.livepill{background:rgba(47,157,255,.14);border:1px solid var(--acc);color:var(--acc);border-radius:20px;padding:4px 12px;font-size:.76rem;font-weight:700;white-space:nowrap;cursor:pointer;animation:pulse 1.6s infinite}
+/* tombol upload mengambang (ganti pill menubar) — muncul saat panel diminimize */
+.up-float{position:fixed;right:18px;bottom:18px;z-index:65;width:60px;height:60px;border-radius:50%;background:var(--card);border:1px solid var(--line);box-shadow:0 8px 26px rgba(0,0,0,.45);cursor:pointer;display:flex;align-items:center;justify-content:center;animation:pulse 1.6s infinite;padding:0}
+.up-float .up-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);pointer-events:none}
+.up-ring-bg{fill:none;stroke:var(--line);stroke-width:4}
+.up-ring-fg{fill:none;stroke:var(--acc);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .4s}
+.up-float-icon{font-size:1.35rem;color:var(--acc);position:relative;z-index:1;line-height:1}
+.up-float-badge{position:absolute;top:-3px;right:-3px;background:var(--acc);color:#fff;font-size:.68rem;font-weight:700;min-width:21px;height:21px;border-radius:11px;display:flex;align-items:center;justify-content:center;padding:0 5px;z-index:2;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.up-float.warn .up-float-icon{color:#f0a020}
+.up-float.warn .up-ring-fg{stroke:#f0a020}
+.up-float.warn .up-float-badge{background:#f0a020}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
 /* halaman foto */
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
