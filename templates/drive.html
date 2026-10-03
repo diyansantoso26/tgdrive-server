@@ -3,7 +3,15 @@
 {% block title %}Drive — TG Drive{% endblock %}
 {% block content %}
 <div class="toolbar">
-  <div class="crumbs" id="crumbs"><button class="crumb on" data-f="root">Drive Saya</button></div>
+  <div class="explbar">
+    <div class="explnav">
+      <button id="navBack" title="Kembali">←</button>
+      <button id="navFwd" title="Maju">→</button>
+      <button id="navUp" title="Naik ke folder induk">↑</button>
+    </div>
+    <div class="crumbs pill" id="crumbs"></div>
+    <button class="btn ghost" id="selModeBtn" title="Pilih banyak">☑ Pilih</button>
+  </div>
   <div class="tools">
     <button class="btn ghost tbtn" id="undoBtn" title="Urungkan (Ctrl+Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg></button>
     <button class="btn ghost tbtn" id="redoBtn" title="Ulangi (Ctrl+Shift+Z)" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
@@ -17,21 +25,49 @@
       <option value="size-asc">Terkecil</option>
     </select>
     <button class="btn ghost" id="viewToggle" title="Ganti tampilan">▦</button>
-    <button class="btn ghost" id="newFolderBtn">+ Folder</button>
+    <div class="dpwrap">
+      <button class="btn ghost" id="newBtn">＋ Baru</button>
+      <div class="dpdrop hidden" id="newDrop">
+        <button id="newTxt"><span class="ic">📄</span><span>File teks<small>.txt — catatan polos</small></span></button>
+        <button id="newMd"><span class="ic">📝</span><span>Markdown<small>.md — dengan pratinjau</small></span></button>
+        <button id="newFolderBtn"><span class="ic">📁</span><span>Folder baru</span></button>
+      </div>
+    </div>
+    <div class="dpwrap">
+      <button class="btn primary" id="upBtn">⬆ Upload</button>
+      <div class="dpdrop hidden" id="upDrop">
+        <button id="upFileBtn"><span class="ic">📄</span><span>Upload file<small>Pilih satu/lebih file</small></span></button>
+        <button id="upFolderBtn"><span class="ic">📁</span><span>Upload folder<small>Sertakan struktur folder</small></span></button>
+      </div>
+    </div>
     <div class="ovwrap">
       <button class="btn ghost" id="ovBtn" title="Menu lainnya">⋯</button>
       <div class="ovdrop hidden" id="ovDrop">
         <a class="accmi" id="trashBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Tong Sampah</a>
-        <label class="accmi" for="folderInput"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>Upload folder</label>
       </div>
     </div>
-    <label class="btn primary" for="fileInput">⬆ Upload</label>
     <input id="fileInput" type="file" multiple hidden>
     <input id="folderInput" type="file" webkitdirectory hidden>
   </div>
 </div>
+<div class="storagestrip sstrip" id="sstrip">
+  <button class="ss-head" id="ssHead" title="Ketuk untuk buka/tutup rincian">
+    <span>💾</span><span id="stText">Memuat…</span>
+    <span class="qbar mini"><i id="stBar" style="width:0%"></i></span>
+    <span class="chev">▾</span>
+  </button>
+  <div class="ss-body">
+    <div class="ss-grid">
+      <div><b id="stUsedB">–</b><span>Terpakai</span></div>
+      <div><b id="stFreeB">–</b><span>Tersisa</span></div>
+      <div><b id="stFilesB">–</b><span>File</span></div>
+      <div><b id="stFoldersB">–</b><span>Folder</span></div>
+    </div>
+    <div class="ss-warn hidden" id="ssWarn"></div>
+  </div>
+</div>
 <div id="trashBar" class="trashbar hidden" style="margin-bottom:12px"></div>
-<div id="connBadge" class="muted" style="font-size:.78rem;margin-bottom:10px"></div>
+<div id="selBar" class="selbar hidden"><span id="selCount">0 dipilih</span><span class="spacer"></span><button id="selAllBtn">Pilih semua</button><button id="selCancelBtn">✕ Batal</button></div>
 
 <div id="dropHint" class="drophint hidden">Lepaskan file / folder untuk mengupload</div>
 <div id="queue" class="queue hidden"></div>
@@ -39,11 +75,16 @@
 <div id="lockNote" class="locknote hidden"></div>
 <div id="grid" class="grid"></div>
 <div id="emptyState" class="empty hidden">Belum ada file di sini.<br>Upload file pertama dengan drag &amp; drop atau tombol Upload.</div>
+<div id="selActionBar" class="actionbar">
+  <button class="btn" id="bulkMoveBtn">📂 Pindah</button>
+  <button class="btn" id="bulkDlBtn">⬇ Unduh</button>
+  <button class="btn danger" id="bulkDelBtn">🗑 Hapus</button>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
 initDrive();
-// Menu ⋯ (Tong Sampah, Upload folder)
+// Menu ⋯ (kini hanya Tong Sampah)
 (function(){
   const b=document.getElementById('ovBtn'),d=document.getElementById('ovDrop');
   if(!b||!d)return;
@@ -51,16 +92,19 @@ initDrive();
   document.addEventListener('click',e=>{if(!d.classList.contains('hidden')&&!e.target.closest('.ovwrap'))d.classList.add('hidden')});
   d.addEventListener('click',()=>d.classList.add('hidden'));
 })();
-// Indikator koneksi: domain vs jalur langsung (IP publik)
+// Dropdown Upload & ＋Baru
 (function(){
-  const b=document.getElementById('connBadge');if(!b)return;
-  b.innerHTML=ON_DIRECT
-    ?'Terhubung via: <b style="color:#ffd98a">⚡ jalur langsung (Max Speed)</b>'
-    :'Terhubung via: <b>'+location.host+'</b> <span>🌐 domain</span>';
+  const pairs=[['upBtn','upDrop'],['newBtn','newDrop']];
+  pairs.forEach(([b,dd])=>{
+    const btn=document.getElementById(b),d=document.getElementById(dd);
+    if(!btn||!d)return;
+    btn.addEventListener('click',e=>{e.stopPropagation();
+      document.querySelectorAll('.dpdrop').forEach(x=>{if(x!==d)x.classList.add('hidden')});
+      d.classList.toggle('hidden')});
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest('.dpwrap'))document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'))});
+  document.getElementById('upFileBtn').onclick=()=>{document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));document.getElementById('fileInput').click()};
+  document.getElementById('upFolderBtn').onclick=()=>{document.querySelectorAll('.dpdrop').forEach(x=>x.classList.add('hidden'));document.getElementById('folderInput').click()};
 })();
-// (Mode Besar dihapus dari menu — upload besar kini otomatis. Fallback manual:
-// tombol "Coba via Mode Besar" muncul kontekstual saat upload besar gagal otomatis,
-// + link "Buka jalur langsung (darurat)" di Pengaturan khusus PRO.)
-
 </script>
 {% endblock %}
