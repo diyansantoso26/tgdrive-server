@@ -348,3 +348,8 @@ label.btn{cursor:pointer}
 .fpick .frow:hover{background:var(--bg2)}
 .fpick .frow.on{background:rgba(79,140,255,.14)}
 @media(max-width:640px){.explbar{flex-wrap:wrap}.ss-grid{grid-template-columns:repeat(2,1fr)}}
+/* ===== revisi toolbar 2026-10-03: [navigasi] | [undo/redo] | [cari] | [aksi] ===== */
+.tools.toolbar2{width:100%;margin-left:0}
+.tdiv{width:1px;height:26px;align-self:center;background:var(--line);opacity:.8;flex-shrink:0}
+.tools.toolbar2 input[type=search]{flex:1 1 140px;min-width:120px}
+@media(max-width:640px){.tools.toolbar2{gap:6px}.tools.toolbar2 select{max-width:130px}}
