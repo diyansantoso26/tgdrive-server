@@ -2,6 +2,18 @@
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function fmtSize(b){if(b==null)return'';b=+b;if(b<1024)return b+' B';const u=['KB','MB','GB'];let i=-1;do{b/=1024;i++}while(b>=1024&&i<2);return b.toFixed(1)+' '+u[i]}
 async function api(url,opts){const r=await fetch(url,opts);const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
+// pindah domain/direct pakai token handoff (tanpa login ulang) — global utk semua halaman
+async function handoffGo(base){
+  try{
+    const r=await api('/api/handoff-token',{method:'POST'});
+    if(r&&r.token){
+      const dest=location.pathname+location.search;
+      location.href=base+'/auth/handoff?token='+encodeURIComponent(r.token)+'&next='+encodeURIComponent(dest);
+      return;
+    }
+  }catch(e){}
+  location.href=base+location.pathname+location.search; // fallback: navigasi biasa
+}
 function fmtDate(iso){if(!iso)return'';const d=new Date(iso);return d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}
 function fmtDay(iso){const d=new Date(iso),t=new Date();const day=x=>x.toDateString();if(day(d)===day(t))return'Hari Ini';const y=new Date(t);y.setDate(y.getDate()-1);if(day(d)===day(y))return'Kemarin';return d.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
 
@@ -11,10 +23,10 @@ const CF_LIMIT=100*1024*1024; // batas Cloudflare per request (hanya via domain)
 // ON_DIRECT diset server via base.html (akurat: bandingkan host dgn direct_url admin)
 if(typeof ON_DIRECT==='undefined'){var ON_DIRECT=/^\d{1,3}(\.\d{1,3}){3}$/.test(location.hostname)}
 // LIM: batas per user dari server (dipakai routing upload)
-let LIM={maxUpload:20*1024*1024,cfLimit:100*1024*1024,resumeThreshold:10*1024*1024,isPro:false,directUrl:''};
+let LIM={maxUpload:20*1024*1024,cfLimit:100*1024*1024,resumeThreshold:10*1024*1024,isPro:false,directUrl:'',chunked:true};
 (async()=>{try{const s=await api('/api/storage');const el=document.getElementById('storageInfo');if(el)el.textContent=fmtSize(s.bytes)+' • '+s.count+' file';if(s.max_upload_bytes)MAX_UPLOAD=s.max_upload_bytes}catch(e){}})();
 (async()=>{try{const l=await api('/api/upload-limits');
-  LIM={maxUpload:l.max_upload_bytes,cfLimit:l.cf_limit_bytes,resumeThreshold:l.resume_threshold_bytes,isPro:!!l.is_pro,directUrl:l.direct_url||''};
+  LIM={maxUpload:l.max_upload_bytes,cfLimit:l.cf_limit_bytes,resumeThreshold:l.resume_threshold_bytes,isPro:!!l.is_pro,directUrl:l.direct_url||'',chunked:l.chunked!==false};
   MAX_UPLOAD=l.max_upload_bytes;
 }catch(e){}})();
 
@@ -487,9 +499,21 @@ function initDrive(){
     async function worker(){
       while(idx<ready.length){
         const j=ready[idx++];
-        // >=10MB: upload chunked (resume); di bawah itu: upload biasa sekali kirim
-        if(j.f.size>=LIM.resumeThreshold) await doUploadChunked(j.f,j.overwriteId,j.folderId);
-        else await doUploadP(j.f,j.overwriteId,j.folderId,1);
+        const big=j.f.size>=LIM.cfLimit;
+        if(big){
+          // MODE 2: >=100MB khusus PRO, chunked via direct (hindari timeout Cloudflare)
+          if(!LIM.chunked){
+            // admin mematikan mode resume: PRO bisa single POST bila sudah di direct,
+            // di domain tawarkan pindah manual (fallback kontekstual Mode Besar)
+            if(ON_DIRECT)await doUploadP(j.f,j.overwriteId,j.folderId,1);
+            else{const r0=qitem(j.f.name,'');r0.status.innerHTML='Mode resume dimatikan admin. Pindah manual untuk upload file ini. ';
+              const mb=document.createElement('button');mb.className='btn ghost';
+              mb.style.cssText='padding:2px 10px;font-size:.78rem';mb.textContent='⚡ Mode Besar';
+              mb.onclick=()=>handoffGo(LIM.directUrl);r0.status.appendChild(mb)}
+            continue;
+          }
+          await doUploadChunked(j.f,j.overwriteId,j.folderId);
+        }else await doUploadP(j.f,j.overwriteId,j.folderId,1); // MODE 1: <100MB single POST via domain
       }
     }
     await Promise.all([worker(),worker(),worker()]);
@@ -552,18 +576,24 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       if(ctx.paused)lbl.textContent='Dijeda — klik Lanjut untuk meneruskan. ';
       else{if(ctx._resume)ctx._resume()}};
     bC.onclick=async()=>{ctx.cancelled=true;if(ctx._resume)ctx._resume();
-      try{if(ctx.upload_id){const fd=new FormData();fd.append('upload_id',ctx.upload_id);await fetch('/api/upload/cancel',{method:'POST',body:fd})}}catch(e){}
+      try{if(ctx.upload_id){const fd=new FormData();fd.append('upload_id',ctx.upload_id);
+        if(ctx.token)fd.append('transfer_token',ctx.token);
+        await fetch((ctx.base||'')+'/api/upload/cancel',{method:'POST',body:fd})}}catch(e){}
       if(ctx.upload_id)clearLocalSession(ctx.upload_id);
       lbl.textContent='Dibatalkan. ';ctl.remove();setTimeout(()=>row.el.remove(),2000)};
     return ctl;
   }
 
-  // loop utama: kirim potongan yang belum ada, dukung jeda/lanjut & retry
+  // loop utama: kirim potongan yang belum ada, dukung jeda/lanjut & retry.
+  // ctx.base: '' = domain (same-origin, cookie) atau 'https://direct...:8443' (token di body)
   async function runChunkedUpload(ctx){
     const file=ctx.file,row=ctx.row,upload_id=ctx.upload_id,chunk_size=ctx.chunk_size,total=ctx.total;
-    const lbl=ctx.lbl;
+    const lbl=ctx.lbl,base=ctx.base||'',token=ctx.token||'';
+    const qid='upload_id='+encodeURIComponent(upload_id)+(token?'&transfer_token='+encodeURIComponent(token):'');
+    const statusUrl=token?base+'/api/upload/status?'+qid:'/api/upload/status?upload_id='+encodeURIComponent(upload_id);
     let have=new Set();
-    try{const st=await api('/api/upload/status?upload_id='+encodeURIComponent(upload_id));have=new Set(st.received||[])}catch(e){}
+    try{const st=token?(await(await fetch(statusUrl)).json()):(await api(statusUrl));
+      have=new Set(st.received||[])}catch(e){}
     let done=have.size;
     const setPct=()=>{const pc=Math.round(done/total*100);row.bar.style.width=pc+'%';return pc};
     setPct();
@@ -580,7 +610,8 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
         try{
           const fd=new FormData();
           fd.append('upload_id',upload_id);fd.append('chunk_index',i);fd.append('chunk',blob,'c'+i);
-          const r=await fetch('/api/upload/chunk',{method:'POST',body:fd});
+          if(token)fd.append('transfer_token',token);
+          const r=await fetch(base+'/api/upload/chunk',{method:'POST',body:fd});
           const j=await r.json().catch(()=>({}));
           if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
           ok=true;done++;have.add(i);
@@ -594,24 +625,38 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     }
     lbl.textContent='Merakit & mengirim ke Telegram, mohon tunggu… ';row.spd.textContent='';
     const fd=new FormData();fd.append('upload_id',upload_id);
-    const r=await fetch('/api/upload/complete',{method:'POST',body:fd});
+    if(token)fd.append('transfer_token',token);
+    const r=await fetch(base+'/api/upload/complete',{method:'POST',body:fd});
     const j=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
     return j;
   }
 
-  async function doUploadChunked(f,overwriteId,folderId){
+  // tombol fallback: buka jalur langsung manual (Mode Besar) — hanya saat otomatis gagal
+  function modeBesarFallbackBtn(row,retryFn){
+    const mb=document.createElement('button');mb.className='btn ghost';
+    mb.style.cssText='padding:2px 10px;font-size:.78rem;margin-left:6px';
+    mb.textContent='⚡ Coba via Mode Besar';
+    mb.onclick=()=>{handoffGo(LIM.directUrl)};
+    row.status.appendChild(mb);
+    return mb;
+  }
+
+  async function doUploadChunked(f,overwriteId,folderId,clientKey){
     const row=qitem(f.name,'');
     const lbl=document.createElement('span');row.status.appendChild(lbl);
-    const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0};
+    const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:null,chunk_size:0,total:0,base:'',token:''};
     const ctl=addChunkControls(row,ctx,lbl);
+    clientKey=clientKey||('ck_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10));
     try{
       lbl.textContent='Menyiapkan… ';
       const init=await api('/api/upload/init',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({name:f.name,file_size:f.size,folder_id:folderId,overwrite_id:overwriteId})});
-      Object.assign(ctx,{upload_id:init.upload_id,chunk_size:init.chunk_size,total:init.total_chunks});
+        body:JSON.stringify({name:f.name,file_size:f.size,folder_id:folderId,overwrite_id:overwriteId,client_key:clientKey})});
+      Object.assign(ctx,{upload_id:init.upload_id,chunk_size:init.chunk_size,total:init.total_chunks,
+        base:init.target==='direct'?(init.direct_url||''):'' ,token:init.transfer_token||''});
       saveLocalSession({upload_id:init.upload_id,name:f.name,size:f.size,lastModified:f.lastModified,
-        folderId:folderId,chunk_size:init.chunk_size,total:init.total_chunks});
+        folderId:folderId,chunk_size:init.chunk_size,total:init.total_chunks,
+        base:ctx.base,token:ctx.token});
       const j=await runChunkedUpload(ctx);
       clearLocalSession(ctx.upload_id);
       lbl.textContent=j.overwritten?'Ditimpakan ✓':'Selesai ✓';row.bar.style.width='100%';row.spd.textContent='';
@@ -621,8 +666,11 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       row.el.classList.add('err');ctl.remove();
       lbl.textContent='Gagal: '+e.message+' ';
       const rb=document.createElement('button');rb.className='btn ghost';rb.style.cssText='padding:2px 10px;font-size:.78rem';rb.textContent='Coba lagi';
-      rb.onclick=()=>{row.el.remove();doUploadChunked(f,overwriteId,folderId)};
+      rb.onclick=()=>{row.el.remove();doUploadChunked(f,overwriteId,folderId,clientKey)};
       row.status.appendChild(rb);
+      // fallback kontekstual: pindah manual ke direct bila upload besar otomatis gagal di domain
+      if(!ON_DIRECT&&LIM.directUrl&&f.size>=LIM.cfLimit&&LIM.isPro)
+        modeBesarFallbackBtn(row);
     }
   }
 
@@ -641,13 +689,18 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
       const bc=document.createElement('button');bc.className='btn ghost';bc.style.cssText='padding:2px 10px;font-size:.78rem;margin-left:6px';bc.textContent='Hapus';
       row.status.appendChild(bp);row.status.appendChild(bc);
       bp.onclick=()=>inp.click();
-      bc.onclick=async()=>{try{const fd=new FormData();fd.append('upload_id',s.upload_id);await fetch('/api/upload/cancel',{method:'POST',body:fd})}catch(e){}
+      bc.onclick=async()=>{try{const fd=new FormData();fd.append('upload_id',s.upload_id);
+        const ls0=getLocalSessions().find(x=>x.upload_id===s.upload_id)||{};
+        if(ls0.token)fd.append('transfer_token',ls0.token);
+        await fetch((ls0.base||'')+'/api/upload/cancel',{method:'POST',body:fd})}catch(e){}
         clearLocalSession(s.upload_id);row.el.remove()};
       inp.onchange=async()=>{
         const f=inp.files[0];if(!f)return;
         if(f.name!==s.name||f.size!==s.size){lbl.textContent='File tidak cocok — nama & ukuran harus sama persis dengan sebelumnya. ';return}
         bp.remove();bc.remove();inp.remove();
-        const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:s.upload_id,chunk_size:s.chunk_size,total:s.total_chunks};
+        const ls=getLocalSessions().find(x=>x.upload_id===s.upload_id)||{};
+        const ctx={file:f,row,lbl,paused:false,cancelled:false,upload_id:s.upload_id,chunk_size:s.chunk_size,total:s.total_chunks,
+          base:ls.base||'',token:ls.token||''};
         const ctl=addChunkControls(row,ctx,lbl);
         try{
           const j=await runChunkedUpload(ctx);
@@ -671,11 +724,14 @@ function fmtMB(mb){return mb>=1024?(mb/1024).toFixed(1)+' GB':Math.round(mb)+' M
     m.querySelector('#nfGo').onclick=async()=>{const n=m.querySelector('#nfName').value.trim();if(!n)return;
       const r=await api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:S.folder==='root'?null:S.folder})});
       m.remove();await loadFolders();load();
-      const newId=r&&r.folder&&r.folder.id;
+      const newId=r&&r.id; // POST /api/folders mengembalikan {id, name} langsung
       if(newId){
+        const ref={id:newId}; // referensi mutable: redo membuat folder baru dgn ID baru
+        const parentId=S.folder==='root'?null:S.folder;
         pushUndo('buat folder "'+n+'"',
-          ()=>api('/api/folders/'+newId,{method:'DELETE'}),
-          ()=>api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:S.folder==='root'?null:S.folder})}));
+          ()=>api('/api/folders/'+ref.id,{method:'DELETE'}),
+          async()=>{const rr=await api('/api/folders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,parent_id:parentId})});
+            if(rr&&rr.id)ref.id=rr.id}); // simpan ID baru agar undo kedua tetap bekerja
         toast('Folder "'+n+'" dibuat.','Urungkan',doUndo);
       }}};
   document.getElementById('trashBtn').onclick=()=>{S.trash=true;S.folder='root';renderCrumbs();load()};
@@ -738,18 +794,8 @@ function initSettings(){
   };
   /* --- max speed (PRO): jalur langsung via IP publik --- */
   /* --- max speed: pindah domain/direct pakai token handoff (tanpa login ulang) --- */
-  async function handoffGo(base){
-    try{
-      const r=await api('/api/handoff-token',{method:'POST'});
-      if(r&&r.token){
-        const dest=location.pathname+location.search;
-        location.href=base+'/auth/handoff?token='+encodeURIComponent(r.token)+'&next='+encodeURIComponent(dest);
-        return;
-      }
-    }catch(e){}
-    location.href=base+location.pathname+location.search; // fallback: navigasi biasa
-  }
-  window.handoffGo=handoffGo; // dipakai juga oleh drive.html
+  // (handoffGo kini global, didefinisikan di atas bersama api())
+  window.handoffGo=handoffGo; // kompatibilitas template lama
 
   /* --- sumber daya --- */
   function setBar(id,frac,txt){const b=document.getElementById(id);b.style.width=Math.min(100,frac*100)+'%';document.getElementById(id+'T').textContent=txt}
