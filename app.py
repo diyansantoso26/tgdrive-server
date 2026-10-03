@@ -1,7 +1,10 @@
 """TG Drive — penyimpanan cloud pribadi berbasis Telegram. MVP single-user."""
+import hashlib
+import json
 import mimetypes
 import os
 import re
+import secrets
 import sqlite3
 import subprocess
 import time
@@ -98,6 +101,41 @@ def _tier_info():
                     'kuota_mb': t['kuota_mb'], 'max_upload_mb': t['max_upload_mb'],
                     'harga': (db.get_setting(price_key, '') or '').strip()})
     return out
+
+
+# ---------- batas upload ----------
+
+CF_LIMIT_BYTES = 100 * 1024 * 1024  # batas Cloudflare per request (via domain)
+RESUME_THRESHOLD_BYTES = 10 * 1024 * 1024  # >= ini pakai upload chunked/resume
+
+
+def _user_tier(user_id):
+    """Kembalikan tier lisensi aktif user (atau None)."""
+    lic = db.get_active_license(user_id)
+    return lic['tier'] if lic else None
+
+
+def _max_upload_bytes(user_id):
+    """Batas ukuran per file (byte) untuk user ini, dienforce di server."""
+    pro = False
+    if user_id:
+        u = db.get_user(user_id)
+        # samakan dengan is_pro(): admin selalu PRO, atau flag is_pro, atau lisensi aktif
+        if u and (u['role'] == 'admin' or u['is_pro']):
+            pro = True
+        elif db.has_active_license(user_id):
+            pro = True
+    if not pro:
+        # non-PRO: hanya bisa via domain -> kena batas Cloudflare
+        return min(CF_LIMIT_BYTES, config.MAX_UPLOAD_BYTES)
+    tier = _user_tier(user_id)
+    tmax = (LICENSE_TIERS.get(tier, {}).get('max_upload_mb')
+            if tier else None) or 2048
+    return min(tmax * 1024 * 1024, config.MAX_UPLOAD_BYTES)
+
+
+def _direct_base():
+    return _norm_public_url(db.get_setting('direct_url', ''), 'http://').rstrip('/')
 
 
 def _do_login_session(u):
@@ -770,6 +808,62 @@ def api_check_duplicate():
     })
 
 
+def _process_upload_file(tmp_path, orig_name, size, folder_id, overwrite_id, creds,
+                          user_id, t0, old_rec=None):
+    """Kirim file lokal ke Telegram + catat DB. Dipakai upload biasa & chunked."""
+    kind = detect_kind(orig_name)
+    mime = mimetypes.guess_type(orig_name)[0]
+    taken = exif_taken_at(tmp_path) if kind == 'photo' else None
+    caption = orig_name[:900]
+
+    if kind == 'photo':
+        meta = tg.send_photo(tmp_path, caption, creds=creds)
+    elif kind == 'video':
+        meta = tg.send_video(tmp_path, caption, creds=creds)
+    else:
+        meta = tg.send_document(tmp_path, orig_name, caption, creds=creds)
+    if not meta.get('file_id'):
+        raise tg.TgError('Telegram tidak mengembalikan file_id')
+
+    w, h = meta.get('width'), meta.get('height')
+    if kind == 'photo' and (not w or not h):
+        try:
+            with Image.open(tmp_path) as im:
+                w, h = im.size
+        except Exception:
+            pass
+
+    new_rec = {
+        'name': orig_name[:200], 'kind': kind, 'mime': mime, 'size': size,
+        'file_id': meta['file_id'], 'thumb_file_id': meta.get('thumb_file_id'),
+        'message_id': meta.get('message_id'), 'width': w, 'height': h,
+        'duration': meta.get('duration'), 'taken_at': taken, 'folder_id': folder_id,
+        'user_id': user_id,
+    }
+    if old_rec:
+        # TIMPA: ganti isi file lama, hapus pesan Telegram yang lama
+        db.update_file_storage(old_rec['id'], user_id, new_rec)
+        if old_rec.get('message_id'):
+            tg.delete_message(old_rec['message_id'], creds=creds)
+        # hapus cache lokal versi lama (file + thumbnail)
+        for _cp in (cache_path_for(old_rec['file_id']),
+                    os.path.join(config.THUMB_DIR, (old_rec.get('thumb_file_id') or '') + '.jpg')):
+            try:
+                if _cp and os.path.exists(_cp):
+                    os.remove(_cp)
+            except OSError:
+                pass
+        fid = old_rec['id']
+    else:
+        fid = db.add_file(new_rec)
+    dur = max(0.1, time.time() - t0)
+    spd = size / dur
+    db.log_activity('overwrite' if old_rec else 'upload', user_id,
+                    file_id=fid, file_name=orig_name[:200], folder_id=folder_id,
+                    detail='%s • %.0f dtk • %s/dtk' % (fmt_size(size), dur, fmt_size(spd)))
+    return fid, bool(old_rec)
+
+
 @app.route('/api/upload', methods=['POST'])
 @login_required
 def api_upload():
@@ -793,67 +887,21 @@ def api_upload():
     old_rec = db.get_file(overwrite_id, uid()) if overwrite_id else None
 
     orig_name = up.filename
+    if len(orig_name.encode('utf-8', 'ignore')) > 200:
+        orig_name = orig_name[:200]
     tmp_name = uuid.uuid4().hex + '_' + secure_filename(orig_name)
     tmp_path = os.path.join(config.TMP_DIR, tmp_name)
     t0 = time.time()
     try:
         up.save(tmp_path)
         size = os.path.getsize(tmp_path)
-        if size > config.MAX_UPLOAD_BYTES:
-            return jsonify({'error': 'File maksimal %s.' % fmt_size(config.MAX_UPLOAD_BYTES)}), 413
+        if size > _max_upload_bytes(uid()):
+            return jsonify({'error': 'File maksimal %s.' % fmt_size(_max_upload_bytes(uid()))}), 413
         if not old_rec and db.user_storage_bytes(uid()) + size > quota_bytes:
             return jsonify({'error': 'Kuota penyimpanan habis (%s).' % fmt_size(quota_bytes)}), 413
-        kind = detect_kind(orig_name)
-        mime = mimetypes.guess_type(orig_name)[0]
-        taken = exif_taken_at(tmp_path) if kind == 'photo' else None
-        caption = orig_name[:900]
-
-        if kind == 'photo':
-            meta = tg.send_photo(tmp_path, caption, creds=creds)
-        elif kind == 'video':
-            meta = tg.send_video(tmp_path, caption, creds=creds)
-        else:
-            meta = tg.send_document(tmp_path, orig_name, caption, creds=creds)
-        if not meta.get('file_id'):
-            raise tg.TgError('Telegram tidak mengembalikan file_id')
-
-        w, h = meta.get('width'), meta.get('height')
-        if kind == 'photo' and (not w or not h):
-            try:
-                with Image.open(tmp_path) as im:
-                    w, h = im.size
-            except Exception:
-                pass
-
-        new_rec = {
-            'name': orig_name[:200], 'kind': kind, 'mime': mime, 'size': size,
-            'file_id': meta['file_id'], 'thumb_file_id': meta.get('thumb_file_id'),
-            'message_id': meta.get('message_id'), 'width': w, 'height': h,
-            'duration': meta.get('duration'), 'taken_at': taken, 'folder_id': folder_id,
-            'user_id': uid(),
-        }
-        if old_rec:
-            # TIMPA: ganti isi file lama, hapus pesan Telegram yang lama
-            db.update_file_storage(old_rec['id'], uid(), new_rec)
-            if old_rec.get('message_id'):
-                tg.delete_message(old_rec['message_id'], creds=creds)
-            # hapus cache lokal versi lama (file + thumbnail)
-            for _cp in (cache_path_for(old_rec['file_id']),
-                        os.path.join(config.THUMB_DIR, (old_rec.get('thumb_file_id') or '') + '.jpg')):
-                try:
-                    if _cp and os.path.exists(_cp):
-                        os.remove(_cp)
-                except OSError:
-                    pass
-            fid = old_rec['id']
-        else:
-            fid = db.add_file(new_rec)
-        dur = max(0.1, time.time() - t0)
-        spd = size / dur
-        db.log_activity('overwrite' if old_rec else 'upload', uid(),
-                        file_id=fid, file_name=orig_name[:200], folder_id=folder_id,
-                        detail='%s • %.0f dtk • %s/dtk' % (fmt_size(size), dur, fmt_size(spd)))
-        return jsonify({'ok': True, 'id': fid, 'overwritten': bool(old_rec)})
+        fid, overwritten = _process_upload_file(tmp_path, orig_name, size, folder_id,
+                                                overwrite_id, creds, uid(), t0, old_rec)
+        return jsonify({'ok': True, 'id': fid, 'overwritten': overwritten})
     except tg.TgError as e:
         return jsonify({'error': 'Telegram: %s' % e}), 502
     except Exception as e:
@@ -863,6 +911,249 @@ def api_upload():
             os.remove(tmp_path)
         except OSError:
             pass
+
+
+# ---------- upload chunked / resume (file besar) ----------
+
+def _chunk_auth():
+    """Auth untuk endpoint chunk: session cookie ATAU transfer token (lintas origin).
+
+    Kembalikan (user_id, upload_session) atau (None, error_response).
+    Token hanya berlaku untuk upload_id yang terikat padanya.
+    """
+    tok = request.form.get('transfer_token') or request.args.get('transfer_token')
+    sid = request.form.get('upload_id') or request.args.get('upload_id')
+    if tok:
+        t = db.consume_transfer_token(hashlib.sha256(tok.encode()).hexdigest(),
+                                      'upload', single_use=False)
+        if not t:
+            return None, (jsonify({'error': 'Token transfer tidak valid/kedaluwarsa.'}), 401)
+        s = db.get_upload_session(t['ref_id'])
+        if not s or s['user_id'] != t['user_id'] or s['status'] != 'active':
+            return None, (jsonify({'error': 'Sesi upload tidak valid.'}), 404)
+        if sid and sid != s['id']:
+            return None, (jsonify({'error': 'Token tidak cocok dengan sesi upload.'}), 403)
+        return t['user_id'], s
+    if not session.get('logged_in'):
+        return None, (jsonify({'error': 'Belum login.'}), 401)
+    s = db.get_upload_session(sid, uid()) if sid else None
+    if not s:
+        return None, (jsonify({'error': 'Sesi upload tidak ditemukan.'}), 404)
+    if s['status'] != 'active':
+        return None, (jsonify({'error': 'Sesi upload sudah %s.' % s['status']}), 410)
+    return uid(), s
+
+
+@app.route('/api/upload/init', methods=['POST'])
+@login_required
+def api_upload_init():
+    """Mulai sesi upload chunked. Tentukan target: domain (file <100MB) atau
+    direct (PRO, file >=100MB). Untuk lintas origin, berikan transfer token."""
+    if not tg_configured():
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    if not _user_creds():
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        file_size = int(data.get('file_size') or 0)
+    except (TypeError, ValueError):
+        file_size = 0
+    name = (data.get('name') or '').strip()[:200]
+    if not name or file_size <= 0:
+        return jsonify({'error': 'Nama/ukuran file tidak valid.'}), 400
+    folder_id = data.get('folder_id')
+    folder_id = int(folder_id) if (isinstance(folder_id, int) or
+                                  (isinstance(folder_id, str) and folder_id.isdigit())) else None
+    if folder_id and not folder_accessible(folder_id):
+        return jsonify({'error': 'Folder terkunci — buka dengan PIN dulu', 'locked': True}), 403
+    overwrite_id = data.get('overwrite_id')
+    overwrite_id = int(overwrite_id) if (isinstance(overwrite_id, int) or
+                                        (isinstance(overwrite_id, str) and str(overwrite_id).isdigit())) else None
+    old_rec = db.get_file(overwrite_id, uid()) if overwrite_id else None
+
+    maxb = _max_upload_bytes(uid())
+    if file_size > maxb:
+        return jsonify({'error': 'File maksimal %s.' % fmt_size(maxb)}), 413
+    me_u = db.get_user(uid())
+    quota_bytes = (me_u['quota_mb'] if me_u else 102400) * 1024 * 1024
+    if not old_rec and db.user_storage_bytes(uid()) + file_size > quota_bytes:
+        return jsonify({'error': 'Kuota penyimpanan habis (%s).' % fmt_size(quota_bytes)}), 413
+
+    pro = is_pro()
+    # Upload chunked per potong 5-10MB -> selalu di bawah batas Cloudflare,
+    # jadi SEMUA upload (termasuk >100MB) bisa via origin saat ini (domain).
+    # Tidak perlu routing ke direct untuk upload.
+    if file_size >= CF_LIMIT_BYTES and not pro:
+        return jsonify({'error': 'File di atas 100 MB khusus pengguna PRO.'}), 403
+
+    chunk_size = (10 * 1024 * 1024) if file_size >= 500 * 1024 * 1024 else (5 * 1024 * 1024)
+    total_chunks = (file_size + chunk_size - 1) // chunk_size
+    sid = uuid.uuid4().hex
+    tmp_path = os.path.join(config.TMP_DIR, 'chunk_' + sid + '.part')
+    # buat file sparse sebesar file_size agar tulis acak per chunk aman
+    try:
+        with open(tmp_path, 'wb') as fh:
+            fh.truncate(file_size)
+    except OSError:
+        return jsonify({'error': 'Gagal menyiapkan ruang sementara.'}), 500
+    db.create_upload_session(sid, uid(), name, file_size, chunk_size, total_chunks,
+                             tmp_path, folder_id, overwrite_id)
+
+    return jsonify({'ok': True, 'upload_id': sid, 'chunk_size': chunk_size,
+                    'total_chunks': total_chunks, 'target': 'domain'})
+
+
+@app.route('/api/upload/sessions', methods=['GET'])
+@login_required
+def api_upload_sessions():
+    """Daftar sesi upload aktif user (untuk resume lintas buka aplikasi)."""
+    ss = db.list_active_upload_sessions(uid())
+    out = []
+    for s in ss:
+        try:
+            rec = json.loads(s['received'] or '[]')
+        except Exception:
+            rec = []
+        out.append({'upload_id': s['id'], 'name': s['file_name'], 'size': s['file_size'],
+                    'chunk_size': s['chunk_size'], 'total_chunks': s['total_chunks'],
+                    'received': len(rec), 'folder_id': s['folder_id']})
+    return jsonify({'sessions': out})
+
+
+@app.route('/api/upload/chunk', methods=['POST'])
+def api_upload_chunk():
+    """Terima satu chunk. Auth: session cookie atau transfer token."""
+    user_id, res = _chunk_auth()
+    if user_id is None:
+        return res
+    s = res
+    try:
+        idx = int(request.form.get('chunk_index'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'chunk_index tidak valid.'}), 400
+    if not (0 <= idx < s['total_chunks']):
+        return jsonify({'error': 'chunk_index di luar rentang.'}), 400
+    ch = request.files.get('chunk')
+    if not ch:
+        return jsonify({'error': 'Tidak ada data chunk.'}), 400
+    # tulis di offset yang tepat (mendukung kirim ulang / urutan acak)
+    try:
+        data = ch.read()
+        expect = s['chunk_size'] if idx < s['total_chunks'] - 1 else \
+            (s['file_size'] - s['chunk_size'] * (s['total_chunks'] - 1))
+        if len(data) != expect:
+            return jsonify({'error': 'Ukuran chunk tidak sesuai.'}), 400
+        with open(s['tmp_path'], 'r+b') as fh:
+            fh.seek(idx * s['chunk_size'])
+            fh.write(data)
+    except OSError:
+        return jsonify({'error': 'Gagal menulis chunk.'}), 500
+    n = db.add_upload_chunk(s['id'], idx)
+    return jsonify({'ok': True, 'received': n, 'total': s['total_chunks']})
+
+
+@app.route('/api/upload/status', methods=['GET'])
+def api_upload_status():
+    """Chunk mana saja yang sudah diterima (untuk resume)."""
+    user_id, res = _chunk_auth()
+    if user_id is None:
+        return res
+    s = res
+    try:
+        rec = json.loads(s['received'] or '[]')
+    except Exception:
+        rec = []
+    return jsonify({'ok': True, 'upload_id': s['id'], 'received': sorted(rec),
+                    'total_chunks': s['total_chunks'], 'chunk_size': s['chunk_size'],
+                    'name': s['file_name'], 'size': s['file_size'],
+                    'folder_id': s['folder_id']})
+
+
+@app.route('/api/upload/complete', methods=['POST'])
+def api_upload_complete():
+    """Semua chunk lengkap -> rakit & proses seperti upload biasa."""
+    user_id, res = _chunk_auth()
+    if user_id is None:
+        return res
+    s = res
+    try:
+        rec = set(json.loads(s['received'] or '[]'))
+    except Exception:
+        rec = set()
+    if len(rec) < s['total_chunks']:
+        return jsonify({'error': 'Masih kurang %d potongan.' % (s['total_chunks'] - len(rec)),
+                        'missing': sorted(set(range(s['total_chunks'])) - rec)}), 409
+    if not tg_configured():
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    creds = _user_creds(user_id=user_id)
+    if not creds:
+        return jsonify({'error': 'Akun Telegram belum dikonfigurasi.'}), 500
+    t0 = time.time()
+    try:
+        actual = os.path.getsize(s['tmp_path'])
+        if actual != s['file_size']:
+            return jsonify({'error': 'Ukuran rakitan tidak sesuai (%s vs %s).' %
+                            (fmt_size(actual), fmt_size(s['file_size']))}), 500
+        old_rec = db.get_file(s['overwrite_id'], user_id) if s['overwrite_id'] else None
+        # cek ulang kuota saat finalisasi
+        me_u = db.get_user(user_id)
+        quota_bytes = (me_u['quota_mb'] if me_u else 102400) * 1024 * 1024
+        if not old_rec and db.user_storage_bytes(user_id) + s['file_size'] > quota_bytes:
+            return jsonify({'error': 'Kuota penyimpanan habis.'}), 413
+        fid, overwritten = _process_upload_file(s['tmp_path'], s['file_name'], s['file_size'],
+                                                s['folder_id'], s['overwrite_id'],
+                                                creds, user_id, t0, old_rec)
+        db.set_upload_session_status(s['id'], 'done')
+        try:
+            os.remove(s['tmp_path'])
+        except OSError:
+            pass
+        db.delete_upload_session(s['id'])
+        return jsonify({'ok': True, 'id': fid, 'overwritten': overwritten})
+    except tg.TgError as e:
+        return jsonify({'error': 'Telegram: %s' % e}), 502
+    except Exception as e:
+        return jsonify({'error': 'Gagal merakit: %s' % e}), 500
+
+
+@app.route('/api/upload/cancel', methods=['POST'])
+def api_upload_cancel():
+    user_id, res = _chunk_auth()
+    if user_id is None:
+        return res
+    s = res
+    try:
+        if s['tmp_path'] and os.path.exists(s['tmp_path']):
+            os.remove(s['tmp_path'])
+    except OSError:
+        pass
+    db.delete_upload_session(s['id'])
+    return jsonify({'ok': True})
+
+
+@app.route('/api/download-token', methods=['POST'])
+@login_required
+def api_download_token():
+    """Token download lintas origin untuk file besar (via direct)."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        fid = int(data.get('file_id') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'file_id tidak valid.'}), 400
+    rec = db.get_file(fid, uid())
+    if not rec or rec['trashed']:
+        return jsonify({'error': 'File tidak ditemukan.'}), 404
+    if not folder_accessible(rec.get('folder_id')):
+        return jsonify({'error': 'Folder terkunci.'}), 403
+    raw = secrets.token_urlsafe(32)
+    db.create_transfer_token(hashlib.sha256(raw.encode()).hexdigest(), uid(),
+                             'download', ref_id=str(fid), ttl_seconds=15 * 60)
+    direct_base = _direct_base()
+    if not direct_base:
+        return jsonify({'error': 'Jalur langsung belum diatur admin.'}), 500
+    return jsonify({'ok': True, 'token': raw,
+                    'url': direct_base + '/file/%d/download?token=%s' % (fid, raw)})
+
 
 
 @app.route('/api/files/<int:fid>/trash', methods=['POST'])
@@ -958,10 +1249,10 @@ def api_share():
 @login_required
 def api_storage():
     st = db.count_storage(uid())
-    st['max_upload_bytes'] = config.MAX_UPLOAD_BYTES
+    st['max_upload_bytes'] = _max_upload_bytes(uid())
     u = db.get_user(uid())
     st['quota_mb'] = u['quota_mb'] if u else 102400
-    st['is_pro'] = bool(u and u['is_pro'])
+    st['is_pro'] = is_pro()
     return jsonify(st)
 
 
@@ -985,12 +1276,23 @@ def _serve_record(rec, creds=None):
 
 
 @app.route('/file/<int:fid>/download')
-@login_required
 def file_download(fid):
-    rec = db.get_file(fid, uid())
+    # Auth: session cookie ATAU token download sekali-pakai (lintas origin via direct).
+    tok = request.args.get('token')
+    if tok:
+        t = db.consume_transfer_token(hashlib.sha256(tok.encode()).hexdigest(),
+                                      'download', single_use=False)
+        if not t or t['ref_id'] != str(fid):
+            abort(403)
+        dl_uid = t['user_id']
+    else:
+        if not session.get('logged_in'):
+            abort(401)
+        dl_uid = uid()
+    rec = db.get_file(fid, dl_uid)
     if not rec or rec['trashed']:
         abort(404)
-    if not folder_accessible(rec.get('folder_id')):
+    if not folder_accessible(rec.get('folder_id'), dl_uid):
         abort(404)
     return _serve_record(rec, _creds_for_file(rec))
 
@@ -1134,7 +1436,7 @@ def api_ping():
 
 
 @app.route('/api/sysinfo')
-@login_required
+@admin_required
 def api_sysinfo():
     total_mb, avail_mb = mem_info()
     pcpu, prss = proc_info()
@@ -1153,7 +1455,7 @@ def api_sysinfo():
 
 
 @app.route('/api/limits')
-@login_required
+@admin_required
 def api_limits_get():
     lim = default_limits()
     total_mb, _ = mem_info()
@@ -1336,7 +1638,23 @@ def api_server_info():
         'domain_url': _norm_public_url(db.get_setting('domain_url', 'https://drive.gtg.my.id'), 'https://'),
         'max_speed': effective,
         'max_speed_explicit': explicit is not None,
-        'max_upload_bytes': config.MAX_UPLOAD_BYTES,
+        'max_upload_bytes': _max_upload_bytes(uid()),
+        'cf_limit_bytes': CF_LIMIT_BYTES,
+        'resume_threshold_bytes': RESUME_THRESHOLD_BYTES,
+        'is_pro': True,
+    })
+
+
+@app.route('/api/upload-limits')
+@login_required
+def api_upload_limits():
+    """Batas upload untuk user saat ini (dipakai semua halaman)."""
+    return jsonify({
+        'max_upload_bytes': _max_upload_bytes(uid()),
+        'cf_limit_bytes': CF_LIMIT_BYTES,
+        'resume_threshold_bytes': RESUME_THRESHOLD_BYTES,
+        'is_pro': is_pro(),
+        'direct_url': _direct_base(),
     })
 
 
