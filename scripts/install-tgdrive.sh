@@ -38,14 +38,45 @@ else
     echo "User tgdrive sudah ada"
 fi
 
+# 2b. Cari dan extract backup otomatis
+echo "[2b/5] Cari file backup..."
+APP_DIR="/home/tgdrive/app"
+BACKUP_FILE=""
+for loc in "/home/gtg/tgdrive-backup-2026-10-06.tar.gz" "/root/tgdrive-backup-2026-10-06.tar.gz" "/tmp/tgdrive-backup-2026-10-06.tar.gz" "./tgdrive-backup-2026-10-06.tar.gz" "$HOME/tgdrive-backup-2026-10-06.tar.gz"; do
+    if [ -f "$loc" ]; then
+        BACKUP_FILE="$loc"
+        break
+    fi
+done
+# Cari juga file dengan pola tgdrive-backup-*.tar.gz
+if [ -z "$BACKUP_FILE" ]; then
+    BACKUP_FILE=$(find /home /root /tmp -maxdepth 2 -name "tgdrive-backup-*.tar.gz" 2>/dev/null | head -1)
+fi
+
+if [ ! -d "$APP_DIR" ]; then
+    if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+        echo "Ketemu backup: $BACKUP_FILE"
+        echo "Extract..."
+        mkdir -p /home/tgdrive
+        tar -xzf "$BACKUP_FILE" -C /home/tgdrive
+        chown -R tgdrive:tgdrive /home/tgdrive
+        echo "Extract selesai"
+    else
+        echo "ERROR: $APP_DIR tidak ditemukan dan file backup tidak ketemu!"
+        echo ""
+        echo "Taruh file backup (tgdrive-backup-*.tar.gz) di salah satu:"
+        echo "  - /home/gtg/"
+        echo "  - /root/"
+        echo "  - /tmp/"
+        echo "  - direktori saat ini"
+        echo ""
+        echo "Terus jalanin lagi script ini."
+        exit 1
+    fi
+fi
+
 # 3. Setup Python venv
 echo "[3/5] Setup Python environment..."
-APP_DIR="/home/tgdrive/app"
-if [ ! -d "$APP_DIR" ]; then
-    echo "ERROR: $APP_DIR tidak ditemukan!"
-    echo "Extract dulu file backup ke /home/tgdrive/app"
-    exit 1
-fi
 
 sudo -u tgdrive python3 -m venv "$APP_DIR/venv"
 echo "Install Python packages..."
